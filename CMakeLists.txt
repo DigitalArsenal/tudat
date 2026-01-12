@@ -89,6 +89,66 @@ endif()
 # Option enables the use of ccache by MSVC
 # see https://github.com/ccache/ccache/wiki/MS-Visual-Studio
 option(TUDAT_BUILD_GITHUB_ACTIONS "Build as part of GitHub Actions workflow." OFF)
+
+# +============================================================================
+# EMSCRIPTEN / WEBASSEMBLY CONFIGURATION
+#  Detect Emscripten and configure appropriate build settings
+# +============================================================================
+if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR EMSCRIPTEN)
+    message(STATUS "")
+    message(STATUS "*** EMSCRIPTEN/WEBASSEMBLY BUILD DETECTED ***")
+    message(STATUS "")
+
+    # Mark this as a WASM build
+    set(TUDAT_BUILD_WASM ON)
+
+    # Force settings that are incompatible or unnecessary for WASM
+    set(TUDAT_BUILD_TESTS OFF)
+    set(TUDAT_BUILD_TUDAT_TUTORIALS OFF)
+    set(TUDAT_BUILD_STATIC_LIBRARY ON)
+
+    # These features add complexity and may not work well in WASM
+    if (NOT DEFINED TUDAT_BUILD_WITH_SOFA_INTERFACE)
+        set(TUDAT_BUILD_WITH_SOFA_INTERFACE OFF)
+    endif()
+    set(TUDAT_BUILD_WITH_EXTENDED_PRECISION_PROPAGATION_TOOLS OFF)
+
+    message(STATUS "WASM build: Tests disabled")
+    message(STATUS "WASM build: Tutorials disabled")
+    message(STATUS "WASM build: Static library forced")
+    message(STATUS "")
+
+    # Create update-emscripten target
+    # This allows users to update the Emscripten SDK version
+    set(EMSDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/.emsdk")
+    set(EMSDK_INSTALL_DIR "${EMSDK_DIR}/emsdk")
+
+    if(WIN32)
+        set(EMSDK_EXE "${EMSDK_INSTALL_DIR}/emsdk.bat")
+    else()
+        set(EMSDK_EXE "${EMSDK_INSTALL_DIR}/emsdk")
+    endif()
+
+    add_custom_target(update-emscripten
+        COMMAND git -C "${EMSDK_INSTALL_DIR}" pull
+        COMMAND "${EMSDK_EXE}" install ${EMSDK_VERSION}
+        COMMAND "${EMSDK_EXE}" activate ${EMSDK_VERSION}
+        COMMAND ${CMAKE_COMMAND} -E echo "${EMSDK_VERSION}" > "${EMSDK_DIR}/.installed_version"
+        WORKING_DIRECTORY "${EMSDK_INSTALL_DIR}"
+        COMMENT "Updating Emscripten SDK to version ${EMSDK_VERSION}"
+        VERBATIM
+    )
+
+    # Target to list available Emscripten versions
+    add_custom_target(list-emscripten-versions
+        COMMAND "${EMSDK_EXE}" list
+        WORKING_DIRECTORY "${EMSDK_INSTALL_DIR}"
+        COMMENT "Listing available Emscripten SDK versions"
+        VERBATIM
+    )
+else()
+    set(TUDAT_BUILD_WASM OFF)
+endif()
 if (TUDAT_BUILD_GITHUB_ACTIONS AND MSVC)
     find_program(ccache_exe ccache)
     if(ccache_exe)
@@ -111,6 +171,7 @@ if (TUDAT_BUILD_GITHUB_ACTIONS AND MSVC)
 endif()
 
 message(STATUS "******************** BUILD CONFIGURATION ********************")
+message(STATUS "TUDAT_BUILD_WASM                                      ${TUDAT_BUILD_WASM}")
 message(STATUS "TUDAT_BUILD_TESTS                                     ${TUDAT_BUILD_TESTS}")
 message(STATUS "TUDAT_BUILD_WITH_PROPAGATION_TESTS                    ${TUDAT_BUILD_WITH_PROPAGATION_TESTS}")
 message(STATUS "TUDAT_BUILD_WITH_ESTIMATION_TOOLS                     ${TUDAT_BUILD_WITH_ESTIMATION_TOOLS}")

@@ -76,3 +76,6 @@ Tudat/interface/spice/Kernels/
 
 # Rever
 rever/
+
+# Emscripten SDK (auto-downloaded by CMake)
+.emsdk/
