@@ -66,9 +66,11 @@ target_link_libraries(tudat_wasm_test
     tudat_basics
     tudat_data
 
-    # External interfaces (SOFA for high-precision calculations)
+    # External interfaces (SOFA for high-precision calculations, SPICE for ephemeris)
     tudat_sofa_interface
+    tudat_spice_interface
     ${Sofa_LIBRARIES}
+    ${CSpice_LIBRARIES}
 )
 
 set_target_properties(tudat_wasm_test

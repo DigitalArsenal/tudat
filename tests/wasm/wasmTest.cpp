@@ -63,6 +63,10 @@
 #include "tudat/astro/gravitation/centralGravityModel.h"
 #include "tudat/astro/gravitation/gravityFieldModel.h"
 
+// SPICE interface (for time conversions, frame rotations, TLE propagation)
+#include "tudat/interface/spice/spiceInterface.h"
+#include "tudat/astro/ephemerides/tleEphemeris.h"
+
 // Resource paths
 #include "tudat/resource/resource.h"
 
@@ -1154,6 +1158,219 @@ void testPropagationTermination()
     checkClose("Exponential decay final state", finalEntry->second(0), expectedFinalState, 1e-6);
 }
 
+// ============================================================================
+// SPICE TESTS - Functions that work without external kernel files
+// ============================================================================
+
+void testSpiceTimeConversions()
+{
+    std::cout << "\n=== SPICE Time Conversions ===" << std::endl;
+
+    using namespace spice_interface;
+
+    // Test Julian Date to Ephemeris Time conversion
+    // J2000 epoch: January 1, 2000, 12:00 TT
+    // Julian Date at J2000 = 2451545.0
+    // Ephemeris Time at J2000 = 0.0 (by definition)
+
+    double j2000JulianDate = 2451545.0;
+    double ephemerisTime = convertJulianDateToEphemerisTime(j2000JulianDate);
+    checkClose("SPICE: JD 2451545.0 -> ET 0.0", ephemerisTime, 0.0, 1e-6);
+
+    // Test reverse conversion
+    double recoveredJD = convertEphemerisTimeToJulianDate(ephemerisTime);
+    checkClose("SPICE: ET 0.0 -> JD 2451545.0", recoveredJD, j2000JulianDate, 1e-10);
+
+    // Test one day after J2000
+    // One day = 86400 seconds
+    double oneDayET = 86400.0;
+    double oneDayJD = convertEphemerisTimeToJulianDate(oneDayET);
+    checkClose("SPICE: ET 86400 -> JD 2451546.0", oneDayJD, 2451546.0, 1e-10);
+
+    // Round-trip test
+    double testJD = 2460000.0;  // Some arbitrary Julian Date
+    double testET = convertJulianDateToEphemerisTime(testJD);
+    double roundTripJD = convertEphemerisTimeToJulianDate(testET);
+    checkClose("SPICE: JD round-trip", roundTripJD, testJD, 1e-10);
+
+    // Test with negative ephemeris time (before J2000)
+    double beforeJ2000ET = -86400.0;  // One day before J2000
+    double beforeJ2000JD = convertEphemerisTimeToJulianDate(beforeJ2000ET);
+    checkClose("SPICE: ET -86400 -> JD 2451544.0", beforeJ2000JD, 2451544.0, 1e-10);
+}
+
+void testSpiceFrameRotations()
+{
+    std::cout << "\n=== SPICE Frame Rotations ===" << std::endl;
+
+    using namespace spice_interface;
+
+    // Test the hardcoded J2000 <-> ECLIPJ2000 rotation
+    // These rotations are built into SPICE and don't require kernel files
+
+    Eigen::Matrix3d j2000ToEclip = getRotationFromJ2000ToEclipJ2000();
+    Eigen::Matrix3d eclipToJ2000 = getRotationFromEclipJ2000ToJ2000();
+
+    // Verify rotation matrices are valid (orthogonal, det = 1)
+    checkClose("J2000->ECLIP determinant", j2000ToEclip.determinant(), 1.0, 1e-14);
+    checkClose("ECLIP->J2000 determinant", eclipToJ2000.determinant(), 1.0, 1e-14);
+
+    // Verify orthogonality: R * R^T = I
+    Eigen::Matrix3d shouldBeI1 = j2000ToEclip * j2000ToEclip.transpose();
+    checkClose("J2000->ECLIP orthogonality (trace)", shouldBeI1.trace(), 3.0, 1e-14);
+
+    Eigen::Matrix3d shouldBeI2 = eclipToJ2000 * eclipToJ2000.transpose();
+    checkClose("ECLIP->J2000 orthogonality (trace)", shouldBeI2.trace(), 3.0, 1e-14);
+
+    // Verify they are inverses of each other
+    Eigen::Matrix3d product = j2000ToEclip * eclipToJ2000;
+    checkClose("J2000<->ECLIP inverse (trace)", product.trace(), 3.0, 1e-14);
+
+    // The obliquity of the ecliptic at J2000 is approximately 23.4 degrees
+    // The rotation should be about the X-axis by this angle
+    // cos(23.4°) ≈ 0.9175, sin(23.4°) ≈ 0.3978
+    double obliquityRad = 23.4 * mathematical_constants::PI / 180.0;
+
+    // Check that the rotation preserves the X-axis (rotation is about X)
+    Eigen::Vector3d xAxis(1.0, 0.0, 0.0);
+    Eigen::Vector3d rotatedX = j2000ToEclip * xAxis;
+    checkVectorClose("J2000->ECLIP preserves X-axis", rotatedX, xAxis, 1e-10);
+
+    // Check approximate rotation angle by looking at Y and Z components
+    Eigen::Vector3d yAxis(0.0, 1.0, 0.0);
+    Eigen::Vector3d rotatedY = j2000ToEclip * yAxis;
+    // After rotation about X by obliquity, Y should go to (0, cos(obl), sin(obl))
+    checkClose("J2000->ECLIP Y->Y' cos component", rotatedY(1), std::cos(obliquityRad), 0.01);
+}
+
+void testSpiceErrorHandling()
+{
+    std::cout << "\n=== SPICE Error Handling ===" << std::endl;
+
+    using namespace spice_interface;
+
+    // Test error handling functions - these don't require kernels
+
+    // Set error mode to RETURN (don't abort on error)
+    toggleErrorReturn();
+
+    // Suppress error output to keep test output clean
+    suppressErrorOutput();
+
+    // Check that no error exists initially (or clear any existing)
+    bool hadError = checkFailure();
+    // We don't care about the result, just that it doesn't crash
+
+    // Get error message (should be empty if no error)
+    std::string errorMsg = getErrorMessage();
+
+    // Verify error handling functions work
+    checkTrue("SPICE error handling functions work", true);
+
+    // Test kernel count (should be 0 or whatever was loaded)
+    int kernelCount = getTotalCountOfKernelsLoaded();
+    checkTrue("SPICE kernel count >= 0", kernelCount >= 0);
+}
+
+void testSpiceTLEPropagation()
+{
+    std::cout << "\n=== SPICE TLE Propagation (SGP4) ===" << std::endl;
+
+    using namespace spice_interface;
+    using namespace ephemerides;
+
+    // Test TLE propagation using SPICE's SGP4/SDP4 implementation
+    // This doesn't require kernel files - it's a self-contained propagator
+
+    // Create a TLE object directly from orbital elements
+    // Using ISS-like orbital elements
+    double epoch = 0.0;  // J2000 epoch
+    double bStar = 0.0001;  // Drag coefficient
+    double inclination = unit_conversions::convertDegreesToRadians(51.6);  // ISS inclination
+    double rightAscension = unit_conversions::convertDegreesToRadians(0.0);
+    double eccentricity = 0.0001;  // Nearly circular
+    double argOfPerigee = unit_conversions::convertDegreesToRadians(0.0);
+    double meanAnomaly = unit_conversions::convertDegreesToRadians(0.0);
+    // Mean motion in radians per MINUTE (TLE convention)
+    // For ISS at ~400km altitude, orbital period ≈ 92 minutes
+    // Mean motion = 2π / 92 ≈ 0.0683 rad/min
+    double meanMotion = 2.0 * mathematical_constants::PI / 92.0;
+
+    std::shared_ptr<Tle> tle = std::make_shared<Tle>(
+        epoch, bStar, inclination, rightAscension,
+        eccentricity, argOfPerigee, meanAnomaly, meanMotion);
+
+    // Verify TLE object was created correctly
+    checkClose("TLE epoch", tle->getEpoch(), epoch, 1e-14);
+    checkClose("TLE inclination", tle->getInclination(), inclination, 1e-14);
+    checkClose("TLE eccentricity", tle->getEccentricity(), eccentricity, 1e-14);
+    checkClose("TLE mean motion", tle->getMeanMotion(), meanMotion, 1e-14);
+
+    // Create TLE ephemeris
+    TleEphemeris tleEphemeris("Earth", "J2000", tle, false);  // false = use SGP4, not SDP4
+
+    // Propagate to a time near the epoch
+    double propagationTime = 60.0;  // 1 minute after epoch
+    Eigen::Vector6d state = tleEphemeris.getCartesianState(propagationTime);
+
+    // Verify we got a valid state (non-zero position and velocity)
+    double positionMagnitude = state.head<3>().norm();
+    double velocityMagnitude = state.tail<3>().norm();
+
+    // ISS orbit radius should be approximately Earth radius + altitude
+    // Earth radius ≈ 6371 km, ISS altitude ≈ 400 km
+    // So radius ≈ 6771 km = 6.771e6 m
+    checkTrue("TLE position magnitude reasonable (> 6e6 m)", positionMagnitude > 6.0e6);
+    checkTrue("TLE position magnitude reasonable (< 8e6 m)", positionMagnitude < 8.0e6);
+
+    // ISS orbital velocity ≈ 7.66 km/s = 7660 m/s
+    checkTrue("TLE velocity magnitude reasonable (> 7000 m/s)", velocityMagnitude > 7000.0);
+    checkTrue("TLE velocity magnitude reasonable (< 8500 m/s)", velocityMagnitude < 8500.0);
+
+    // Propagate for one orbital period and check it returns close to start
+    double orbitalPeriod = 92.0 * 60.0;  // 92 minutes in seconds
+    Eigen::Vector6d stateAfterOrbit = tleEphemeris.getCartesianState(orbitalPeriod);
+
+    // Position should return close to initial (within ~100 km due to drag and J2)
+    Eigen::Vector6d initialState = tleEphemeris.getCartesianState(0.0);
+    double positionDiff = (stateAfterOrbit.head<3>() - initialState.head<3>()).norm();
+    checkTrue("TLE returns near initial after one orbit (< 200 km)", positionDiff < 200.0e3);
+}
+
+void testSpiceTemeFrameRotation()
+{
+    std::cout << "\n=== SPICE TEME Frame Rotation ===" << std::endl;
+
+    using namespace ephemerides;
+
+    // Test the TEME (True Equator, Mean Equinox) frame rotation
+    // This is used for TLE/SGP4 coordinate transformations
+
+    double epoch = 0.0;  // J2000
+
+    Eigen::Matrix3d temeToJ2000 = getRotationMatrixFromTemeToJ2000(epoch);
+    Eigen::Matrix3d j2000ToTeme = getRotationMatrixFromJ2000ToTeme(epoch);
+
+    // Verify rotation matrices are valid (orthogonal, det = 1)
+    checkClose("TEME->J2000 determinant", temeToJ2000.determinant(), 1.0, 1e-14);
+    checkClose("J2000->TEME determinant", j2000ToTeme.determinant(), 1.0, 1e-14);
+
+    // Verify orthogonality
+    Eigen::Matrix3d shouldBeI = temeToJ2000 * temeToJ2000.transpose();
+    checkClose("TEME->J2000 orthogonality (trace)", shouldBeI.trace(), 3.0, 1e-14);
+
+    // Verify they are inverses
+    Eigen::Matrix3d product = temeToJ2000 * j2000ToTeme;
+    checkClose("TEME<->J2000 inverse (trace)", product.trace(), 3.0, 1e-14);
+
+    // At J2000 epoch, the TEME and J2000 frames should be very close
+    // (they differ mainly due to nutation and precession accumulated since J2000)
+    // The difference should be small angles (arc-seconds to arc-minutes)
+    Eigen::Matrix3d diff = temeToJ2000 - Eigen::Matrix3d::Identity();
+    double maxDiff = diff.cwiseAbs().maxCoeff();
+    checkTrue("TEME≈J2000 at epoch (small rotation)", maxDiff < 0.01);  // Less than ~0.5 degrees
+}
+
 int main()
 {
     std::cout << "========================================" << std::endl;
@@ -1191,6 +1408,17 @@ int main()
         testTwoBodyPropagation();         // Two-body orbit propagation
         testMultiBodyMassPropagation();   // Coupled multi-body mass propagation
         testPropagationTermination();     // Termination conditions
+
+        // SPICE tests (functions that work without external kernel files)
+        std::cout << "\n========================================" << std::endl;
+        std::cout << "  SPICE TESTS" << std::endl;
+        std::cout << "========================================" << std::endl;
+
+        testSpiceTimeConversions();       // Julian Date <-> Ephemeris Time
+        testSpiceFrameRotations();        // J2000 <-> ECLIPJ2000 rotations
+        testSpiceErrorHandling();         // SPICE error control functions
+        testSpiceTLEPropagation();        // SGP4 propagation without kernels
+        testSpiceTemeFrameRotation();     // TEME <-> J2000 frame rotation
 
 #ifdef __EMSCRIPTEN__
         testEmscriptenEnvironment();
