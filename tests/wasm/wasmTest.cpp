@@ -1612,11 +1612,13 @@ void testSpiceTLEPropagation()
     std::cout << "\n=== TLE/SGP4 Propagation (Vallado Benchmark) ===" << std::endl;
 
 #ifdef __EMSCRIPTEN__
-    // SKIP: TLE/SGP4 propagation crashes in WASM
-    // The TleEphemeris::getCartesianState() internally calls SPICE's ev2lin_() function
-    // which calls checkFailure() - an incompatible SPICE error handling function.
-    // See tests/wasm/Agents.md for details on WASM limitations.
-    std::cout << "[SKIP] TLE/SGP4 propagation - uses incompatible SPICE ev2lin_() function" << std::endl;
+    // SKIP: TLE/SGP4 propagation crashes in WASM.
+    // The ev2lin_() function (CSPICE's SGP4 implementation) internally uses
+    // f2c-generated code that calls problematic error handling functions.
+    // Even with -sEMULATE_FUNCTION_POINTER_CASTS=1 and stubbed error handling,
+    // the deep CSPICE calls still trigger "RuntimeError: unreachable" in WASM.
+    // This requires patching CSPICE at the source level to fix.
+    std::cout << "[SKIP] TLE/SGP4 propagation - CSPICE ev2lin_() crashes in WASM" << std::endl;
     testsRun++;
     testsPassed++;
 #else
@@ -1733,7 +1735,7 @@ void testSpiceTLEPropagation()
         checkTrue("ISS-like orbit velocity > 7.5e3 m/s", velocityMagnitude > 7.5e3);
         checkTrue("ISS-like orbit velocity < 7.8e3 m/s", velocityMagnitude < 7.8e3);
     }
-#endif
+#endif  // __EMSCRIPTEN__
 }
 
 void testSpiceTemeFrameRotation()

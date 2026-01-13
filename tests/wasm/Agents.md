@@ -120,5 +120,11 @@ node tests/wasm/tudat_wasm_test.js
 ### Recent Fixes
 
 - SPICE error handling functions stubbed for WASM (prevents crashes)
-- Two-Body propagation test tolerance adjusted (11 km error over full orbit is acceptable)
+- Two-Body propagation test: now compares against analytical Kepler (0.015m position error, matches native test methodology)
 - Multi-Body mass propagation test fixed (removed incorrect analytical solution)
+
+### TLE/SGP4 Status
+
+The TLE/SGP4 test is skipped because CSPICE's `ev2lin_()` function crashes in WASM with "RuntimeError: unreachable".
+This is deep in the f2c-generated SGP4 code and requires patching CSPICE at the source level to fix.
+The `-sEMULATE_FUNCTION_POINTER_CASTS=1` flag and stubbed error handling are not sufficient.
