@@ -184,3 +184,28 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+
+# Use Emscripten's Boost port
+# This provides Boost headers compiled for WebAssembly
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -sUSE_BOOST_HEADERS=1")
+
+# Pre-fetch Emscripten's Boost port so CMake can find it
+# The embuilder tool downloads and builds Emscripten ports
+message(STATUS "Fetching Emscripten Boost port...")
+execute_process(
+    COMMAND "${EMSCRIPTEN_ROOT}/embuilder" build boost_headers
+    WORKING_DIRECTORY "${EMSCRIPTEN_ROOT}"
+    RESULT_VARIABLE BOOST_FETCH_RESULT
+    OUTPUT_VARIABLE BOOST_FETCH_OUTPUT
+    ERROR_VARIABLE BOOST_FETCH_ERROR
+)
+if(NOT BOOST_FETCH_RESULT EQUAL 0)
+    message(WARNING "Failed to fetch Boost port: ${BOOST_FETCH_ERROR}")
+endif()
+
+# Set Boost variables to help CMake find the Emscripten-provided Boost
+# The port installs headers to the sysroot cache
+set(BOOST_ROOT "${EMSDK_INSTALL_DIR}/upstream/emscripten/cache/sysroot")
+set(Boost_INCLUDE_DIR "${EMSDK_INSTALL_DIR}/upstream/emscripten/cache/sysroot/include")
+set(Boost_NO_SYSTEM_PATHS ON)
+set(Boost_NO_BOOST_CMAKE ON)

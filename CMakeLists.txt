@@ -107,10 +107,9 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR EMSCRIPTEN)
     set(TUDAT_BUILD_TUDAT_TUTORIALS OFF)
     set(TUDAT_BUILD_STATIC_LIBRARY ON)
 
-    # These features add complexity and may not work well in WASM
-    if (NOT DEFINED TUDAT_BUILD_WITH_SOFA_INTERFACE)
-        set(TUDAT_BUILD_WITH_SOFA_INTERFACE OFF)
-    endif()
+    # SOFA is required for WASM builds due to unconditional includes in source
+    # It will be fetched automatically
+    set(TUDAT_BUILD_WITH_SOFA_INTERFACE ON)
     set(TUDAT_BUILD_WITH_EXTENDED_PRECISION_PROPAGATION_TOOLS OFF)
 
     message(STATUS "WASM build: Tests disabled")
@@ -333,13 +332,46 @@ endif ()
 #endif ()
 
 # Get tudat resource manager dependency.
-find_package(TudatResources REQUIRED)
-message(${TudatResources_INCLUDE_DIRS})
-include_directories(TudatResources_INCLUDE_DIRS)
+if(TUDAT_BUILD_WASM)
+    # For WASM builds, TudatResources is optional - data can be loaded via virtual filesystem
+    find_package(TudatResources QUIET)
+    if(TudatResources_FOUND)
+        message(STATUS "TudatResources found for WASM build")
+        include_directories(TudatResources_INCLUDE_DIRS)
+    else()
+        message(STATUS "TudatResources not found - WASM build will proceed without it")
+        set(TudatResources_INCLUDE_DIRS "")
+    endif()
+else()
+    find_package(TudatResources REQUIRED)
+    message(${TudatResources_INCLUDE_DIRS})
+    include_directories(TudatResources_INCLUDE_DIRS)
+endif()
 
 # Find Eigen3 library on local system and include directories.
-find_package(Eigen3 REQUIRED)
-include_directories(SYSTEM AFTER "${EIGEN3_INCLUDE_DIR}")
+# For WASM builds, download Eigen if not found (it's header-only)
+if(TUDAT_BUILD_WASM)
+    find_package(Eigen3 QUIET)
+    if(NOT Eigen3_FOUND)
+        message(STATUS "Eigen3 not found, downloading for WASM build...")
+        include(FetchContent)
+        FetchContent_Declare(
+            eigen
+            URL https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
+            URL_HASH SHA256=8586084f71f9bde545ee7fa6d00288b264a2b7ac3607b974e54d13e7162c1c72
+        )
+        FetchContent_MakeAvailable(eigen)
+        set(EIGEN3_INCLUDE_DIR "${eigen_SOURCE_DIR}")
+        # Add Eigen includes immediately after setting the variable
+        include_directories(SYSTEM "${EIGEN3_INCLUDE_DIR}")
+        message(STATUS "Eigen3 downloaded to ${EIGEN3_INCLUDE_DIR}")
+    else()
+        include_directories(SYSTEM "${EIGEN3_INCLUDE_DIR}")
+    endif()
+else()
+    find_package(Eigen3 REQUIRED)
+    include_directories(SYSTEM "${EIGEN3_INCLUDE_DIR}")
+endif()
 if (APPLE OR (WIN32 AND CLANG))
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -isystem \"${EIGEN3_INCLUDE_DIR}\"")
 endif ()
@@ -380,16 +412,101 @@ if (UNIX OR (WIN32 AND CLANG))
 endif ()
 
 # CSpice dependency
-find_package(CSpice REQUIRED 1.0.0)
+# For WASM builds, automatically download and build CSpice with Emscripten
+if(TUDAT_BUILD_WASM)
+    find_package(CSpice QUIET 1.0.0)
+    if(NOT CSpice_FOUND)
+        message(STATUS "CSpice not found, downloading and building for WASM...")
+        include(FetchContent)
+        FetchContent_Declare(
+            cspice
+            GIT_REPOSITORY https://github.com/tudat-team/cspice-cmake.git
+            GIT_TAG master
+        )
+        # Set options for CSpice build
+        set(CSPICE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build static CSpice" FORCE)
+        FetchContent_MakeAvailable(cspice)
+        set(CSpice_LIBRARIES cspice)
+        # Headers are in include/cspice/, so include dir is just include/
+        set(CSpice_INCLUDE_DIRS "${cspice_SOURCE_DIR}/include")
+        # Add include directory for the build
+        include_directories(SYSTEM "${CSpice_INCLUDE_DIRS}")
+        message(STATUS "CSpice downloaded to ${cspice_SOURCE_DIR}")
+        message(STATUS "CSpice include dir: ${CSpice_INCLUDE_DIRS}")
+    endif()
+else()
+    find_package(CSpice REQUIRED 1.0.0)
+endif()
 
+# SOFA library for astronomical calculations
 if (TUDAT_BUILD_WITH_SOFA_INTERFACE)
-    find_package(Sofa REQUIRED 1.0.0)
+    if(TUDAT_BUILD_WASM)
+        find_package(Sofa QUIET 1.0.0)
+        if(NOT Sofa_FOUND)
+            message(STATUS "SOFA not found, downloading and building for WASM...")
+            include(FetchContent)
+            FetchContent_Declare(
+                sofa
+                GIT_REPOSITORY https://github.com/tudat-team/sofa-cmake.git
+                GIT_TAG master
+            )
+            FetchContent_MakeAvailable(sofa)
+            set(Sofa_LIBRARIES sofa)
+            set(Sofa_INCLUDE_DIRS "${sofa_SOURCE_DIR}/include")
+            include_directories(SYSTEM "${Sofa_INCLUDE_DIRS}")
+            message(STATUS "SOFA downloaded to ${sofa_SOURCE_DIR}")
+            message(STATUS "SOFA include dir: ${Sofa_INCLUDE_DIRS}")
+        endif()
+    else()
+        find_package(Sofa REQUIRED 1.0.0)
+    endif()
     add_definitions(-DTUDAT_BUILD_WITH_SOFA_INTERFACE=1)
 endif ()
 
-find_package(nrlmsise00 REQUIRED 0.1)
-message(STATUS ${NRLMSISE00_LIBRARIES})
-add_definitions(-DTUDAT_BUILD_WITH_NRLMSISE=1)
+# nrlmsise00 atmospheric model
+# For WASM builds, automatically download and build nrlmsise00 with Emscripten
+if(TUDAT_BUILD_WASM)
+    find_package(nrlmsise00 QUIET 0.1)
+    if(NOT nrlmsise00_FOUND)
+        message(STATUS "nrlmsise00 not found, downloading and building for WASM...")
+        include(FetchContent)
+        FetchContent_Declare(
+            nrlmsise00_fetch
+            GIT_REPOSITORY https://github.com/tudat-team/nrlmsise-00-cmake.git
+            GIT_TAG master
+        )
+        FetchContent_GetProperties(nrlmsise00_fetch)
+        if(NOT nrlmsise00_fetch_POPULATED)
+            FetchContent_Populate(nrlmsise00_fetch)
+        endif()
+        # Create include directory structure expected by tudat (nrlmsise00/nrlmsise-00.h)
+        set(NRLMSISE00_INCLUDE_BASE "${CMAKE_CURRENT_BINARY_DIR}/nrlmsise00_include")
+        file(MAKE_DIRECTORY "${NRLMSISE00_INCLUDE_BASE}/nrlmsise00")
+        file(COPY "${nrlmsise00_fetch_SOURCE_DIR}/nrlmsise-00.h"
+             DESTINATION "${NRLMSISE00_INCLUDE_BASE}/nrlmsise00")
+        # Build nrlmsise00 as a static library (repo doesn't have CMakeLists.txt)
+        add_library(nrlmsise00 STATIC
+            ${nrlmsise00_fetch_SOURCE_DIR}/nrlmsise-00.c
+            ${nrlmsise00_fetch_SOURCE_DIR}/nrlmsise-00_data.c
+        )
+        target_include_directories(nrlmsise00 PUBLIC
+            ${nrlmsise00_fetch_SOURCE_DIR}
+            ${NRLMSISE00_INCLUDE_BASE}
+        )
+        set(NRLMSISE00_LIBRARIES nrlmsise00)
+        set(NRLMSISE00_INCLUDE_DIRS ${NRLMSISE00_INCLUDE_BASE})
+        include_directories(SYSTEM "${NRLMSISE00_INCLUDE_DIRS}")
+        message(STATUS "nrlmsise00 downloaded to ${nrlmsise00_fetch_SOURCE_DIR}")
+        message(STATUS "nrlmsise00 include dir: ${NRLMSISE00_INCLUDE_DIRS}")
+    else()
+        message(STATUS ${NRLMSISE00_LIBRARIES})
+    endif()
+    add_definitions(-DTUDAT_BUILD_WITH_NRLMSISE=1)
+else()
+    find_package(nrlmsise00 REQUIRED 0.1)
+    message(STATUS ${NRLMSISE00_LIBRARIES})
+    add_definitions(-DTUDAT_BUILD_WITH_NRLMSISE=1)
+endif()
 
 if (TUDAT_BUILD_WITH_FFTW3)
     if(NOT APPLE)
@@ -486,10 +603,13 @@ install(FILES
         DESTINATION ${INSTALL_INCLUDE_DIR}/tudat)
 
 # Add all targets to the build-tree export set
-export(TARGETS ${${PROJECT_NAME}_LIBRARIES} NAMESPACE ${PROJECT_NAME}:: FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME_LOWER}_export.cmake")
+# For WASM builds, skip export as dependencies are built locally via FetchContent
+if(NOT TUDAT_BUILD_WASM)
+    export(TARGETS ${${PROJECT_NAME}_LIBRARIES} NAMESPACE ${PROJECT_NAME}:: FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME_LOWER}_export.cmake")
 
-# Installation of the export modules.
-install(EXPORT ${PROJECT_NAME_LOWER}_export NAMESPACE ${PROJECT_NAME}:: DESTINATION "${RELATIVE_INSTALL_CMAKE_DIR}")
+    # Installation of the export modules.
+    install(EXPORT ${PROJECT_NAME_LOWER}_export NAMESPACE ${PROJECT_NAME}:: DESTINATION "${RELATIVE_INSTALL_CMAKE_DIR}")
+endif()
 
 # Export the package for use from the build-tree
 # (this registers the build-tree with a global CMake-registry)

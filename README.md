@@ -36,9 +36,34 @@ List available Emscripten versions:
 cmake --build build-wasm --target list-emscripten-versions
 ```
 
+### External Dependencies
+
+All dependencies are automatically handled for WASM builds:
+
+| Dependency | Notes |
+|------------|-------|
+| **Boost** | Headers automatically provided via Emscripten port |
+| **Eigen3** | Automatically downloaded if not found |
+| **CSpice** | Automatically downloaded and built with Emscripten |
+| **nrlmsise00** | Automatically downloaded and built with Emscripten |
+| **SOFA** | Optional, disabled by default for WASM |
+
+Dependencies are downloaded to the `_deps/` folder inside the build directory.
+
+### Data Files
+
+In WASM builds, data files are accessed via Emscripten's virtual filesystem. Mount your data files to `/tudat_data`:
+
+```javascript
+// In your JavaScript code
+Module.FS.mkdir('/tudat_data');
+Module.FS.mount(Module.MEMFS, {}, '/tudat_data');
+// ... load your data files
+```
+
 ### Notes
 
 - The Emscripten SDK is installed to `.emsdk/` in the project root (gitignored)
 - Tests and tutorials are automatically disabled for WASM builds
-- External dependencies (Boost, CSpice, nrlmsise00) must be built with Emscripten and made available to CMake
+- A stub resource header is provided for WASM builds that don't have TudatResources
 
