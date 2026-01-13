@@ -1,5 +1,9 @@
 # WASM-specific tests that don't require Boost.Test
 # These tests can be run with Node.js after building with Emscripten
+#
+# This test suite includes comprehensive propagation tests that work without
+# external SPICE kernels by using analytical ephemerides and self-contained
+# dynamical systems (CR3BP, two-body, mass propagation, etc.)
 
 add_executable(tudat_wasm_test wasmTest.cpp)
 
@@ -15,14 +19,56 @@ target_include_directories(tudat_wasm_test
     ${Boost_INCLUDE_DIRS}
 )
 
+# Full propagation library dependencies for comprehensive WASM testing
+# These libraries enable orbit propagation, environment setup, and dynamics simulation
+# without requiring external SPICE kernels (using analytical ephemerides instead)
 target_link_libraries(tudat_wasm_test
     PRIVATE
+    # Simulation and propagation setup
+    tudat_propagation_setup
+    tudat_environment_setup
+    tudat_estimation_setup
+
+    # Core propagators and dynamics
+    tudat_propagators
+    tudat_numerical_integrators
+
+    # Astrodynamics and physics
     tudat_basic_astrodynamics
+    tudat_gravitation
+    tudat_ephemerides
+    tudat_aerodynamics
+    tudat_propulsion
+    tudat_electromagnetism
+    tudat_relativity
+
+    # Supporting libraries
+    tudat_reference_frames
     tudat_basic_mathematics
     tudat_interpolators
-    tudat_numerical_integrators
+    tudat_root_finders
     tudat_statistics
-    tudat_reference_frames
+    tudat_numerical_quadrature
+    tudat_filters
+
+    # System and geometry
+    tudat_system_models
+    tudat_geometric_shapes
+    tudat_ground_stations
+
+    # Mission analysis
+    tudat_mission_segments
+    tudat_shape_based_methods
+    tudat_low_thrust_trajectories
+
+    # I/O and utilities
+    tudat_input_output
+    tudat_basics
+    tudat_data
+
+    # External interfaces (SOFA for high-precision calculations)
+    tudat_sofa_interface
+    ${Sofa_LIBRARIES}
 )
 
 set_target_properties(tudat_wasm_test
