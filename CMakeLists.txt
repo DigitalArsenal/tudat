@@ -581,6 +581,11 @@ if (TUDAT_BUILD_TESTS)
     add_subdirectory(tests)
 endif ()
 
+# WASM-specific tests (don't require Boost.Test)
+if (TUDAT_BUILD_WASM)
+    add_subdirectory(tests/wasm)
+endif ()
+
 # Cleanup YOLO global project variables.
 #include(YOLOProjectCleanup)
 
