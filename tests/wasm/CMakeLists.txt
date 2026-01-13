@@ -84,9 +84,12 @@ if(EMSCRIPTEN)
     # The data directory contains EOP files needed for earth orientation calculations
     set(WASM_DATA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/data")
 
+    # -sEMULATE_FUNCTION_POINTER_CASTS=1 is required because CSPICE's f2c-generated code
+    # has function signature mismatches (e.g., s_cat, s_copy return void but are called
+    # expecting int). WASM is strict about this and will crash without emulation.
     set_target_properties(tudat_wasm_test PROPERTIES
         SUFFIX ".js"
-        LINK_FLAGS "-sENVIRONMENT=node -sEXIT_RUNTIME=1 -sNODERAWFS=0 -sMODULARIZE=0 -sINVOKE_RUN=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB --embed-file ${WASM_DATA_DIR}@/tudat_data"
+        LINK_FLAGS "-sENVIRONMENT=node -sEXIT_RUNTIME=1 -sNODERAWFS=0 -sMODULARIZE=0 -sINVOKE_RUN=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB -sEMULATE_FUNCTION_POINTER_CASTS=1 --embed-file ${WASM_DATA_DIR}@/tudat_data"
     )
 
     # Register test with CTest for running via Node.js

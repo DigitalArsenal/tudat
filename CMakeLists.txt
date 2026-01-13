@@ -112,6 +112,11 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR EMSCRIPTEN)
     set(TUDAT_BUILD_WITH_SOFA_INTERFACE ON)
     set(TUDAT_BUILD_WITH_EXTENDED_PRECISION_PROPAGATION_TOOLS OFF)
 
+    # CSPICE's f2c-generated code has function signature mismatches (e.g., s_cat, s_copy
+    # return void but are called expecting int). WASM is strict about this and will crash
+    # without emulation. This flag must be set globally to apply to all linked libraries.
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -sEMULATE_FUNCTION_POINTER_CASTS=1")
+
     message(STATUS "WASM build: Tests disabled")
     message(STATUS "WASM build: Tutorials disabled")
     message(STATUS "WASM build: Static library forced")
