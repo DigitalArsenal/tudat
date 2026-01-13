@@ -19,6 +19,10 @@ target_link_libraries(tudat_wasm_test
     PRIVATE
     tudat_basic_astrodynamics
     tudat_basic_mathematics
+    tudat_interpolators
+    tudat_numerical_integrators
+    tudat_statistics
+    tudat_reference_frames
 )
 
 set_target_properties(tudat_wasm_test

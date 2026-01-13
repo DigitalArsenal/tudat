@@ -79,3 +79,6 @@ rever/
 
 # Emscripten SDK (auto-downloaded by CMake)
 .emsdk/
+
+# Boost (downloaded by CMake for building)
+boost/
