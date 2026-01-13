@@ -428,9 +428,86 @@ if(TUDAT_BUILD_WASM)
             GIT_REPOSITORY https://github.com/tudat-team/cspice-cmake.git
             GIT_TAG master
         )
-        # Set options for CSpice build
-        set(CSPICE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build static CSpice" FORCE)
-        FetchContent_MakeAvailable(cspice)
+        # Use FetchContent_Populate to download first, then apply WASM patches
+        FetchContent_GetProperties(cspice)
+        if(NOT cspice_POPULATED)
+            FetchContent_Populate(cspice)
+
+            # Apply WASM compatibility patches to CSPICE
+            # These fix f2c function signature mismatches that cause WASM crashes
+            set(CSPICE_PATCH_FILE "${CMAKE_SOURCE_DIR}/cmake/patches/cspice-wasm.patch")
+            if(EXISTS "${CSPICE_PATCH_FILE}")
+                message(STATUS "Applying WASM patches to CSpice...")
+                # Apply patches using individual file modifications (more reliable than patch command)
+                # Patch sig_die.c - change abort() to exit(1) for WASM
+                file(READ "${cspice_SOURCE_DIR}/src/cspice/sig_die.c" SIG_DIE_CONTENT)
+                if(NOT SIG_DIE_CONTENT MATCHES "__EMSCRIPTEN__")
+                    string(REPLACE
+                        "fflush(stderr);\n      /* now get a core */\n#ifdef SIGIOT"
+                        "fflush(stderr);\n#ifdef __EMSCRIPTEN__\n      /* In WASM, abort() causes a trap instruction that results in\n         \"RuntimeError: unreachable\". Use exit(1) instead for clean shutdown. */\n      exit(1);\n#else\n      /* now get a core */\n#ifdef SIGIOT"
+                        SIG_DIE_CONTENT "${SIG_DIE_CONTENT}")
+                    string(REPLACE
+                        "abort();\n      }"
+                        "abort();\n#endif\n      }"
+                        SIG_DIE_CONTENT "${SIG_DIE_CONTENT}")
+                    file(WRITE "${cspice_SOURCE_DIR}/src/cspice/sig_die.c" "${SIG_DIE_CONTENT}")
+                    message(STATUS "  Patched sig_die.c")
+                endif()
+
+                # Patch s_copy.c - change void to int return type
+                file(READ "${cspice_SOURCE_DIR}/src/cspice/s_copy.c" S_COPY_CONTENT)
+                if(NOT S_COPY_CONTENT MATCHES "return 0;")
+                    string(REPLACE
+                        "/* assign strings:  a = b */\n\n#ifdef KR_headers\nVOID s_copy"
+                        "/* assign strings:  a = b */\n/* Modified for WASM: Changed return type from void to int to match f2c-generated caller expectations */\n\n#ifdef KR_headers\nint s_copy"
+                        S_COPY_CONTENT "${S_COPY_CONTENT}")
+                    string(REPLACE
+                        "void s_copy(register char *a, register char *b, ftnlen la, ftnlen lb)"
+                        "int s_copy(register char *a, register char *b, ftnlen la, ftnlen lb)"
+                        S_COPY_CONTENT "${S_COPY_CONTENT}")
+                    string(REPLACE
+                        "*a++ = ' ';\n\t\t}\n\t}"
+                        "*a++ = ' ';\n\t\t}\n\treturn 0;\n\t}"
+                        S_COPY_CONTENT "${S_COPY_CONTENT}")
+                    file(WRITE "${cspice_SOURCE_DIR}/src/cspice/s_copy.c" "${S_COPY_CONTENT}")
+                    message(STATUS "  Patched s_copy.c")
+                endif()
+
+                # Patch s_cat.c - change VOID to int return type
+                file(READ "${cspice_SOURCE_DIR}/src/cspice/s_cat.c" S_CAT_CONTENT)
+                if(NOT S_CAT_CONTENT MATCHES "return 0;")
+                    string(REPLACE
+                        "#endif /* NO_OVERWRITE */\n\n VOID\n#ifdef KR_headers"
+                        "#endif /* NO_OVERWRITE */\n\n/* Modified for WASM: Changed return type from VOID to int to match f2c-generated caller expectations */\n int\n#ifdef KR_headers"
+                        S_CAT_CONTENT "${S_CAT_CONTENT}")
+                    string(REPLACE
+                        "free(lp1);\n\t\t}\n#endif\n\t}"
+                        "free(lp1);\n\t\t}\n#endif\n\treturn 0;\n\t}"
+                        S_CAT_CONTENT "${S_CAT_CONTENT}")
+                    file(WRITE "${cspice_SOURCE_DIR}/src/cspice/s_cat.c" "${S_CAT_CONTENT}")
+                    message(STATUS "  Patched s_cat.c")
+                endif()
+
+                # Patch rsfe.c - change zzsetnnread_ void to int
+                file(READ "${cspice_SOURCE_DIR}/src/cspice/rsfe.c" RSFE_CONTENT)
+                if(RSFE_CONTENT MATCHES "void.*zzsetnnread_" AND NOT RSFE_CONTENT MATCHES "int.*zzsetnnread_")
+                    string(REPLACE
+                        "void    zzsetnnread_( logical * on );"
+                        "int     zzsetnnread_( logical * on );"
+                        RSFE_CONTENT "${RSFE_CONTENT}")
+                    string(REPLACE
+                        "void zzsetnnread_( logical * on )\n   {\n   read_non_native = *on;\n   }"
+                        "/* Modified for WASM: Changed return type from void to int to match f2c-generated caller expectations */\nint zzsetnnread_( logical * on )\n   {\n   read_non_native = *on;\n   return 0;\n   }"
+                        RSFE_CONTENT "${RSFE_CONTENT}")
+                    file(WRITE "${cspice_SOURCE_DIR}/src/cspice/rsfe.c" "${RSFE_CONTENT}")
+                    message(STATUS "  Patched rsfe.c")
+                endif()
+            endif()
+
+            # Now add the subdirectory to build
+            set(CSPICE_BUILD_SHARED_LIBS OFF CACHE BOOL "Build static CSpice" FORCE)
+            add_subdirectory(${cspice_SOURCE_DIR} ${cspice_BINARY_DIR})
+        endif()
         set(CSpice_LIBRARIES cspice)
         # Headers are in include/cspice/, so include dir is just include/
         set(CSpice_INCLUDE_DIRS "${cspice_SOURCE_DIR}/include")

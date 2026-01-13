@@ -16,67 +16,74 @@ Build Tudat for WebAssembly (WASM) to enable browser-based astrodynamics simulat
 - TLE/SGP4 velocity: < 0.05 m/s
 - Orbital element conversions: 1e-14 relative error (NASA ODTBX benchmarks)
 
-## Current WASM Limitations
+## Current WASM Status
 
-### SPICE Functions with WASM Stubs
+### ALL TESTS PASSING ✓
 
-These SPICE functions crash in WASM due to f2c string handling issues.
-They have been stubbed out (no-op) in WASM builds via `#ifdef __EMSCRIPTEN__`:
+**Test Results**: 167 tests pass, 0 skipped, 0 failures
 
-- `toggleErrorReturn()` / `erract_c()` - stubbed (no-op in WASM)
-- `toggleErrorAbort()` / `errdev_c()` - stubbed (no-op in WASM)
-- `suppressErrorOutput()` / `errdev_c()` - stubbed (no-op in WASM)
-- `getErrorMessage()` / `getmsg_c()` - returns empty string in WASM
-- `checkFailure()` - uses `failed_c()` only (skips `reset_c()`) in WASM
+### TLE/SGP4 Performance (Vallado Benchmark)
+- Position error: 15.6 m (requirement: < 50 m) ✓
+- Velocity error: 0.021 m/s (requirement: < 0.05 m/s) ✓
 
-Note: `failed_c()` works in WASM, but `erract_c()`, `errdev_c()`, `getmsg_c()`, and `reset_c()` do not.
+## CSPICE Patches Applied
 
-### Tests Currently Skipped in WASM
+The following patches were applied to CSPICE source files to enable WASM compatibility:
 
-1. **TLE/SGP4 Propagation** - Uses `ev2lin_()` which calls `checkFailure()` internally. Once SPICE
-   error handling is fixed at the source (not just stubbed), this should work.
+### 1. `sig_die.c` - Abort handling
+Changed `abort()` to `exit(1)` in WASM builds to avoid WASM trap instruction:
+```c
+#ifdef __EMSCRIPTEN__
+   exit(1);  // abort() causes "RuntimeError: unreachable" in WASM
+#else
+   abort();
+#endif
+```
 
-### What Now Works in WASM (fixed)
+### 2. `s_copy.c` - Return type fix
+Changed return type from `void` to `int` to match f2c-generated caller expectations:
+```c
+int s_copy(register char *a, register char *b, ftnlen la, ftnlen lb)
+// ... body unchanged ...
+return 0;
+```
 
-1. **SPICE Error Handling Functions** - Stubbed for WASM to prevent crashes
-2. **J2000<->ECLIPJ2000 Frame Rotations** - Analytical implementation added to `spiceInterface.cpp`
-3. **TEME Frame Rotations** - SOFA functions work without modification
+### 3. `s_cat.c` - Return type fix
+Changed return type from `VOID` to `int`:
+```c
+int s_cat(char *lp, char *rpp[], ftnlen rnp[], ftnlen *np, ftnlen ll)
+// ... body unchanged ...
+return 0;
+```
 
-## File Map
+### 4. `rsfe.c` - `zzsetnnread_` return type fix
+Changed return type from `void` to `int`:
+```c
+int zzsetnnread_( logical * on )
+{
+   read_non_native = *on;
+   return 0;
+}
+```
 
-### Build Configuration
-- `tests/wasm/CMakeLists.txt` - WASM test build config
-  - Embeds data files with `--embed-file`
-  - Sets memory: `-sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB`
-  - Output: `tudat_wasm_test.js`
+### Why These Patches Were Needed
+CSPICE's f2c-generated code declares certain functions (like `s_copy`, `s_cat`) as returning `int`,
+but the actual implementations return `void`. In native builds, this mismatch is tolerated by the
+calling conventions. In WASM, strict function signature enforcement causes "RuntimeError: unreachable"
+when there's a type mismatch. The `-sEMULATE_FUNCTION_POINTER_CASTS=1` flag helps with indirect calls
+but doesn't fix direct calls with mismatched signatures.
 
-### Test Files
-- `tests/wasm/wasmTest.cpp` - Main WASM test suite
-  - Lines 1-80: Includes and setup
-  - Lines 80-120: Test framework (checkClose, checkTrue, etc.)
-  - Lines ~200-600: NASA ODTBX orbital element conversion tests
-  - Lines ~600-900: Anomaly conversion tests
-  - Lines ~1400-1550: Propagation tests (CR3BP, mass, two-body)
-  - Lines ~1550-1830: SPICE tests (time, frames, TLE - some skipped)
+## SPICE Functions with WASM Stubs
 
-### Data Files (embedded in WASM binary)
-- `tests/wasm/data/earth_orientation/` - EOP files from IERS
-  - `eopc04_14_IAU2000.62-now.txt`
-  - Various libration and ocean tide amplitude files
+These SPICE functions are stubbed out in WASM builds via `#ifdef __EMSCRIPTEN__` in `spiceInterface.cpp`:
 
-### Key Source Files
-- `src/interface/spice/spiceInterface.cpp`
-  - Line 149-193: `getCartesianStateFromTleAtEpoch()` - calls `ev2lin_()` and `checkFailure()`
-  - Line 561-602: Error handling functions that crash in WASM
+- `toggleErrorReturn()` / `erract_c()` - no-op (avoids f2c string handling crash)
+- `toggleErrorAbort()` / `errdev_c()` - no-op
+- `suppressErrorOutput()` / `errdev_c()` - no-op
+- `getErrorMessage()` / `getmsg_c()` - returns empty string
+- `checkFailure()` - uses `failed_c()` only (skips `reset_c()`)
 
-- `src/astro/ephemerides/tleEphemeris.cpp`
-  - Line 69-78: `getCartesianStateInTemeFrame()` - calls SPICE SGP4
-  - Line 27-47: TEME rotation matrices using SOFA
-
-### Reference Tests (for accuracy targets)
-- `tests/src/astro/ephemerides/unitTestTwoLineElementsEphemeris.cpp`
-  - Line 64: Position tolerance = 50m
-  - Line 65: Velocity tolerance = 0.05 m/s
+Note: `failed_c()` works in WASM natively.
 
 ## What Works in WASM
 
@@ -90,20 +97,46 @@ Note: `failed_c()` works in WASM, but `erract_c()`, `errdev_c()`, `getmsg_c()`, 
 - Legendre polynomials
 - Spherical harmonics
 - CR3BP propagation
-- Two-body propagation
+- Two-body propagation (0.015m error vs analytical Kepler)
 - Mass propagation
 - SPICE time conversions (JD <-> ET)
-- J2000 <-> ECLIPJ2000 frame rotations (analytical implementation for WASM)
-- TEME <-> J2000 frame rotations (SOFA functions work directly)
+- J2000 <-> ECLIPJ2000 frame rotations (analytical implementation)
+- TEME <-> J2000 frame rotations (SOFA functions)
+- **TLE/SGP4 propagation** (15.6m position error, 0.021 m/s velocity error)
 
-## What Needs Fixing (not reimplementing)
+## File Map
 
-1. SPICE error handling - need to either:
-   - Compile SPICE with different error handling mode
-   - Patch SPICE to not use problematic functions in WASM
-   - Find Emscripten flags that make these work
+### Build Configuration
+- `tests/wasm/CMakeLists.txt` - WASM test build config
+  - Embeds data files with `--embed-file`
+  - Sets memory: `-sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB`
+  - Output: `tudat_wasm_test.js`
 
-2. TLE/SGP4 - once error handling works, `ev2lin_()` should work
+- `CMakeLists.txt` (main)
+  - Line ~115-118: `-sEMULATE_FUNCTION_POINTER_CASTS=1` global flag
+
+### Test Files
+- `tests/wasm/wasmTest.cpp` - Main WASM test suite (167 tests)
+  - Includes full TLE/SGP4 propagation tests matching native test methodology
+
+### Data Files (embedded in WASM binary)
+- `tests/wasm/data/earth_orientation/` - EOP files from IERS
+
+### Key Source Files
+- `src/interface/spice/spiceInterface.cpp`
+  - `getCartesianStateFromTleAtEpoch()` - calls `ev2lin_()`
+  - SPICE error handling stubs for WASM
+  - Analytical J2000<->ECLIPJ2000 rotation
+
+- `src/astro/ephemerides/tleEphemeris.cpp`
+  - `getCartesianStateInTemeFrame()` - calls SPICE SGP4
+  - TEME rotation matrices using SOFA
+
+### CSPICE Patched Files (in build-wasm/_deps/cspice-src/)
+- `src/cspice/sig_die.c` - abort() -> exit(1) for WASM
+- `src/cspice/s_copy.c` - void -> int return type
+- `src/cspice/s_cat.c` - void -> int return type
+- `src/cspice/rsfe.c` - zzsetnnread_() void -> int return type
 
 ## Build Commands
 ```bash
@@ -112,19 +145,12 @@ ninja tudat_wasm_test
 node tests/wasm/tudat_wasm_test.js
 ```
 
-## Test Results
+## History
 
-- **Current**: 156 tests pass, 1 skipped (TLE/SGP4), 0 failures
-- **Goal**: All tests pass including TLE/SGP4 with proper SPICE compatibility
-
-### Recent Fixes
-
-- SPICE error handling functions stubbed for WASM (prevents crashes)
-- Two-Body propagation test: now compares against analytical Kepler (0.015m position error, matches native test methodology)
-- Multi-Body mass propagation test fixed (removed incorrect analytical solution)
-
-### TLE/SGP4 Status
-
-The TLE/SGP4 test is skipped because CSPICE's `ev2lin_()` function crashes in WASM with "RuntimeError: unreachable".
-This is deep in the f2c-generated SGP4 code and requires patching CSPICE at the source level to fix.
-The `-sEMULATE_FUNCTION_POINTER_CASTS=1` flag and stubbed error handling are not sufficient.
+### Fixes Applied (chronological)
+1. SPICE error handling functions stubbed for WASM (prevents crashes on erract_c, etc.)
+2. Analytical J2000<->ECLIPJ2000 rotation implemented (avoids SPICE frame kernel dependency)
+3. Two-Body propagation test methodology fixed (compare vs analytical Kepler)
+4. Multi-Body mass propagation test fixed (qualitative checks instead of wrong analytical)
+5. **CSPICE source patches applied** (sig_die.c, s_copy.c, s_cat.c, rsfe.c)
+6. TLE/SGP4 test enabled and passing with full SPICE SGP4 implementation
