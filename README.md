@@ -46,7 +46,7 @@ All dependencies are automatically handled for WASM builds:
 | **Eigen3** | Automatically downloaded if not found |
 | **CSpice** | Automatically downloaded and built with Emscripten |
 | **nrlmsise00** | Automatically downloaded and built with Emscripten |
-| **SOFA** | Optional, disabled by default for WASM |
+| **SOFA** | Required, automatically fetched and built |
 
 Dependencies are downloaded to the `_deps/` folder inside the build directory.
 
@@ -61,9 +61,22 @@ Module.FS.mount(Module.MEMFS, {}, '/tudat_data');
 // ... load your data files
 ```
 
+### Running WASM Tests
+
+A dedicated WASM test suite validates the core library functionality. After building, run the tests using Node.js:
+
+```bash
+# Via CTest (if Node.js was found during configure)
+cd build-wasm && ctest
+
+# Or manually
+node build-wasm/tests/wasm/tudat_wasm_test.js
+```
+
 ### Notes
 
 - The Emscripten SDK is installed to `.emsdk/` in the project root (gitignored)
-- Tests and tutorials are automatically disabled for WASM builds
+- Standard Boost.Test-based tests and tutorials are disabled for WASM builds
+- A lightweight WASM-specific test suite is built instead (see above)
 - A stub resource header is provided for WASM builds that don't have TudatResources
 

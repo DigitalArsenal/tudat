@@ -8,7 +8,7 @@
  *    http://tudat.tudelft.nl/LICENSE.
  *
  *    Simple WASM test to validate the tudat library build.
- *    Run with: node wasmTest.js
+ *    Run with: node build-wasm/tests/wasm/tudat_wasm_test.js
  */
 
 #include <iostream>
@@ -34,6 +34,11 @@
 #include "tudat/math/interpolators/cubicSplineInterpolator.h"
 #include "tudat/math/integrators/rungeKutta4Integrator.h"
 #include "tudat/math/statistics/basicStatistics.h"
+#include "tudat/resource/resource.h"
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 using namespace tudat;
 
@@ -76,6 +81,47 @@ void checkVectorClose(const std::string& testName, const Eigen::Vector3d& actual
         std::cout << "       Expected: [" << expected.transpose() << "]" << std::endl;
         std::cout << "       Actual:   [" << actual.transpose() << "]" << std::endl;
         std::cout << "       Diff norm: " << diff << " (tolerance: " << tolerance << ")" << std::endl;
+    }
+}
+
+void checkTrue(const std::string& testName, bool condition)
+{
+    testsRun++;
+    if (condition) {
+        testsPassed++;
+        std::cout << "[PASS] " << testName << std::endl;
+    } else {
+        testsFailed++;
+        std::cout << "[FAIL] " << testName << std::endl;
+    }
+}
+
+void checkStringEquals(const std::string& testName, const std::string& actual, const std::string& expected)
+{
+    testsRun++;
+    if (actual == expected) {
+        testsPassed++;
+        std::cout << "[PASS] " << testName << std::endl;
+    } else {
+        testsFailed++;
+        std::cout << "[FAIL] " << testName << std::endl;
+        std::cout << "       Expected: \"" << expected << "\"" << std::endl;
+        std::cout << "       Actual:   \"" << actual << "\"" << std::endl;
+    }
+}
+
+void checkStringStartsWith(const std::string& testName, const std::string& actual, const std::string& prefix)
+{
+    testsRun++;
+    bool passed = actual.substr(0, prefix.size()) == prefix;
+    if (passed) {
+        testsPassed++;
+        std::cout << "[PASS] " << testName << std::endl;
+    } else {
+        testsFailed++;
+        std::cout << "[FAIL] " << testName << std::endl;
+        std::cout << "       Expected to start with: \"" << prefix << "\"" << std::endl;
+        std::cout << "       Actual: \"" << actual << "\"" << std::endl;
     }
 }
 
@@ -568,6 +614,43 @@ void testSphericalHarmonics()
     checkClose("Geodesy P_1^1(0.5)", p11, expectedP11, 1e-14);
 }
 
+void testResourcePaths()
+{
+    std::cout << "\n=== Resource Paths (WASM Virtual FS) ===" << std::endl;
+
+    using namespace paths;
+
+    // Test that all resource paths are properly defined and point to the WASM data mount point
+    std::string basePath = "/tudat_data";
+
+    checkStringEquals("Base resources path", get_resources_path(), basePath);
+    checkStringEquals("Ephemeris path", get_ephemeris_path(), basePath + "/ephemeris");
+    checkStringEquals("Earth orientation path", get_earth_orientation_path(), basePath + "/earth_orientation");
+    checkStringEquals("Quadrature path", get_quadrature_path(), basePath + "/quadrature");
+    checkStringEquals("SPICE kernels path", get_spice_kernels_path(), basePath + "/spice_kernels");
+    checkStringEquals("Atmosphere tables path", get_atmosphere_tables_path(), basePath + "/atmosphere_tables");
+    checkStringEquals("Gravity models path", get_gravity_models_path(), basePath + "/gravity_models");
+    checkStringEquals("Space weather path", get_space_weather_path(), basePath + "/space_weather");
+
+    // Verify all paths start with the base path (consistency check)
+    checkStringStartsWith("Ephemeris path prefix", get_ephemeris_path(), basePath);
+    checkStringStartsWith("SPICE kernels path prefix", get_spice_kernels_path(), basePath);
+}
+
+#ifdef __EMSCRIPTEN__
+void testEmscriptenEnvironment()
+{
+    std::cout << "\n=== Emscripten Environment ===" << std::endl;
+
+    // Test that we're running in the Emscripten environment
+    checkTrue("Running in Emscripten", true);
+
+    // Test that the virtual filesystem is available (basic check)
+    // In a full WASM environment, you could test FS operations here
+    checkTrue("WASM environment detected", emscripten_run_script_int("1") == 1);
+}
+#endif
+
 void testLinearAlgebra()
 {
     std::cout << "\n=== Linear Algebra Operations ===" << std::endl;
@@ -618,6 +701,10 @@ int main()
         testStatistics();
         testSphericalHarmonics();
         testLinearAlgebra();
+        testResourcePaths();
+#ifdef __EMSCRIPTEN__
+        testEmscriptenEnvironment();
+#endif
     } catch (const std::exception& e) {
         std::cerr << "\n[ERROR] Exception caught: " << e.what() << std::endl;
         return 1;

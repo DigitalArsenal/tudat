@@ -82,3 +82,8 @@ rever/
 
 # Boost (downloaded by CMake for building)
 boost/
+
+# WASM build artifacts (prevent accidental commits)
+a.out.js
+a.out.wasm
+*.wasm

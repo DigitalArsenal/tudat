@@ -173,8 +173,9 @@ set(TUDAT_BUILD_TUDAT_TUTORIALS OFF CACHE BOOL "Disabled for WASM build" FORCE)
 # Static libraries are the norm for WASM
 set(TUDAT_BUILD_STATIC_LIBRARY ON CACHE BOOL "Static library for WASM" FORCE)
 
-# SOFA interface is optional and adds complexity
-set(TUDAT_BUILD_WITH_SOFA_INTERFACE OFF CACHE BOOL "Disabled for WASM build" FORCE)
+# SOFA interface is required for WASM builds due to unconditional includes in source
+# It will be automatically fetched and built with Emscripten
+set(TUDAT_BUILD_WITH_SOFA_INTERFACE ON CACHE BOOL "Required for WASM build" FORCE)
 
 # Extended precision not well supported in WASM
 set(TUDAT_BUILD_WITH_EXTENDED_PRECISION_PROPAGATION_TOOLS OFF CACHE BOOL "Disabled for WASM" FORCE)

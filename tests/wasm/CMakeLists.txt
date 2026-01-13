@@ -36,4 +36,20 @@ if(EMSCRIPTEN)
         SUFFIX ".js"
         LINK_FLAGS "-sENVIRONMENT=node -sEXIT_RUNTIME=1 -sNODERAWFS=0 -sMODULARIZE=0 -sINVOKE_RUN=1"
     )
+
+    # Register test with CTest for running via Node.js
+    # The test output is tudat_wasm_test.js in the build directory
+    find_program(NODE_EXECUTABLE NAMES node nodejs)
+    if(NODE_EXECUTABLE)
+        add_test(
+            NAME tudat_wasm_test
+            COMMAND ${NODE_EXECUTABLE} "${PROJECT_BINARY_DIR}/tests/wasm/tudat_wasm_test.js"
+            WORKING_DIRECTORY "${PROJECT_BINARY_DIR}/tests/wasm"
+        )
+        set_tests_properties(tudat_wasm_test PROPERTIES
+            LABELS "wasm"
+        )
+    else()
+        message(WARNING "Node.js not found - WASM tests cannot be run via CTest. Install Node.js or run manually.")
+    endif()
 endif()

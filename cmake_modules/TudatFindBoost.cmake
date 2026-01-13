@@ -80,7 +80,7 @@ foreach(_TUDAT_BOOST_COMPONENT ${_TUDAT_REQUIRED_BOOST_LIBS})
         if(Boost_USE_STATIC_LIBS)
             add_library(Boost::${_TUDAT_BOOST_COMPONENT} STATIC IMPORTED)
         else()
-            add_library(Boost::${_TUDAT_BOOST_COMPONENT} UNKNOWN IMPORTED ../tests/src/simulation/unitTestPolyhedron.cpp)
+            add_library(Boost::${_TUDAT_BOOST_COMPONENT} UNKNOWN IMPORTED)
         endif()
         set_target_properties(Boost::${_TUDAT_BOOST_COMPONENT} PROPERTIES
                 INTERFACE_INCLUDE_DIRECTORIES "${Boost_INCLUDE_DIRS}")
