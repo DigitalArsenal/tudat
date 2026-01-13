@@ -41,6 +41,7 @@ target_link_libraries(tudat_wasm_test
     tudat_propulsion
     tudat_electromagnetism
     tudat_relativity
+    tudat_earth_orientation
 
     # Supporting libraries
     tudat_reference_frames
@@ -49,7 +50,6 @@ target_link_libraries(tudat_wasm_test
     tudat_root_finders
     tudat_statistics
     tudat_numerical_quadrature
-    tudat_filters
 
     # System and geometry
     tudat_system_models
@@ -80,9 +80,13 @@ set_target_properties(tudat_wasm_test
 
 # For Emscripten, we need to configure for Node.js execution
 if(EMSCRIPTEN)
+    # Embed data files into the WASM binary
+    # The data directory contains EOP files needed for earth orientation calculations
+    set(WASM_DATA_DIR "${CMAKE_CURRENT_SOURCE_DIR}/data")
+
     set_target_properties(tudat_wasm_test PROPERTIES
         SUFFIX ".js"
-        LINK_FLAGS "-sENVIRONMENT=node -sEXIT_RUNTIME=1 -sNODERAWFS=0 -sMODULARIZE=0 -sINVOKE_RUN=1"
+        LINK_FLAGS "-sENVIRONMENT=node -sEXIT_RUNTIME=1 -sNODERAWFS=0 -sMODULARIZE=0 -sINVOKE_RUN=1 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=256MB --embed-file ${WASM_DATA_DIR}@/tudat_data"
     )
 
     # Register test with CTest for running via Node.js

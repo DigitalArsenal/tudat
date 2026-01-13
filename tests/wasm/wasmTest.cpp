@@ -228,54 +228,344 @@ void testPhysicalConstants()
 
 void testOrbitalElementConversions()
 {
-    std::cout << "\n=== Orbital Element Conversions ===" << std::endl;
+    std::cout << "\n=== Orbital Element Conversions (NASA ODTBX Benchmarks) ===" << std::endl;
 
     using namespace orbital_element_conversions;
 
-    // Define a simple circular orbit (ISS-like)
-    double semiMajorAxis = 6778.0e3;  // ~400 km altitude
-    double eccentricity = 0.0001;      // Nearly circular
-    double inclination = unit_conversions::convertDegreesToRadians(51.6);
-    double argumentOfPeriapsis = 0.0;
-    double longitudeOfAscendingNode = 0.0;
-    double trueAnomaly = 0.0;
+    // =========================================================================
+    // Case 1: Elliptical orbit around Earth - NASA ODTBX benchmark
+    // Reference: NASA Goddard Spaceflight Center, Orbit Determination Toolbox (ODTBX)
+    // =========================================================================
+    {
+        const double earthGravParam = 3.986004415e14;  // m^3/s^2
 
-    // Earth gravitational parameter in m^3/s^2 (standard value)
-    double earthGravParam = 3.986004418e14;
+        // Keplerian elements [m, -, rad, rad, rad, rad]
+        Eigen::Vector6d keplerianElements;
+        keplerianElements(semiMajorAxisIndex) = 8000.0 * 1000.0;
+        keplerianElements(eccentricityIndex) = 0.23;
+        keplerianElements(inclinationIndex) = 20.6 / 180.0 * mathematical_constants::PI;
+        keplerianElements(argumentOfPeriapsisIndex) = 274.78 / 180.0 * mathematical_constants::PI;
+        keplerianElements(longitudeOfAscendingNodeIndex) = 108.77 / 180.0 * mathematical_constants::PI;
+        keplerianElements(trueAnomalyIndex) = 46.11 / 180.0 * mathematical_constants::PI;
 
-    // Create Keplerian elements vector
-    Eigen::Vector6d keplerianElements;
-    keplerianElements << semiMajorAxis, eccentricity, inclination,
-                         argumentOfPeriapsis, longitudeOfAscendingNode, trueAnomaly;
+        // Expected Cartesian elements from ODTBX [m, m, m, m/s, m/s, m/s]
+        Eigen::Vector6d expectedCartesian;
+        expectedCartesian(xCartesianPositionIndex) = 2.021874804243437e6;
+        expectedCartesian(yCartesianPositionIndex) = 6.042523817035284e6;
+        expectedCartesian(zCartesianPositionIndex) = -1.450371183512575e6;
+        expectedCartesian(xCartesianVelocityIndex) = -7.118283509842652e3;
+        expectedCartesian(yCartesianVelocityIndex) = 4.169050171542199e3;
+        expectedCartesian(zCartesianVelocityIndex) = 2.029066072016241e3;
 
-    // Convert to Cartesian
-    Eigen::Vector6d cartesianElements = convertKeplerianToCartesianElements(
-        keplerianElements, earthGravParam);
+        Eigen::Vector6d computedCartesian = convertKeplerianToCartesianElements(
+            keplerianElements, earthGravParam);
 
-    // Convert back to Keplerian
-    Eigen::Vector6d keplerianRecovered = convertCartesianToKeplerianElements(
-        cartesianElements, earthGravParam);
+        // Check each component with NASA-grade precision (1e-15 relative)
+        for (int i = 0; i < 6; i++) {
+            double relError = std::abs(computedCartesian(i) - expectedCartesian(i)) /
+                             std::abs(expectedCartesian(i));
+            checkTrue("ODTBX Earth elliptical component " + std::to_string(i) + " (rel err < 1e-14)",
+                     relError < 1e-14);
+        }
+    }
 
-    // Check round-trip conversion
-    checkClose("Semi-major axis round-trip",
-               keplerianRecovered(0), semiMajorAxis, 1.0); // 1 meter tolerance
+    // =========================================================================
+    // Case 2: Circular equatorial orbit around Mars - NASA ODTBX benchmark
+    // =========================================================================
+    {
+        const double marsGravParam = 4.2828018915e13;  // m^3/s^2
 
-    checkClose("Eccentricity round-trip",
-               keplerianRecovered(1), eccentricity, 1e-10);
+        Eigen::Vector6d keplerianElements;
+        keplerianElements(semiMajorAxisIndex) = 9201.61 * 1000.0;
+        keplerianElements(eccentricityIndex) = 0.0;
+        keplerianElements(inclinationIndex) = 0.0;
+        keplerianElements(argumentOfPeriapsisIndex) = 12.54 / 180.0 * mathematical_constants::PI;
+        keplerianElements(longitudeOfAscendingNodeIndex) = 201.55 / 180.0 * mathematical_constants::PI;
+        keplerianElements(trueAnomalyIndex) = -244.09 / 180.0 * mathematical_constants::PI;
 
-    checkClose("Inclination round-trip",
-               keplerianRecovered(2), inclination, 1e-10);
+        Eigen::Vector6d expectedCartesian;
+        expectedCartesian(xCartesianPositionIndex) = 7.968828015716932e6;
+        expectedCartesian(yCartesianPositionIndex) = -4.600804999999997e6;
+        expectedCartesian(zCartesianPositionIndex) = 0.0;
+        expectedCartesian(xCartesianVelocityIndex) = 1.078703495685965e3;
+        expectedCartesian(yCartesianVelocityIndex) = 1.868369260830248e3;
+        expectedCartesian(zCartesianVelocityIndex) = 0.0;
 
-    // Check that position magnitude is approximately semi-major axis (for e≈0)
-    Eigen::Vector3d position = cartesianElements.head<3>();
-    checkClose("Position magnitude for circular orbit",
-               position.norm(), semiMajorAxis, 1e3); // 1 km tolerance
+        Eigen::Vector6d computedCartesian = convertKeplerianToCartesianElements(
+            keplerianElements, marsGravParam);
 
-    // Check orbital velocity (vis-viva for circular orbit: v = sqrt(mu/r))
-    Eigen::Vector3d velocity = cartesianElements.tail<3>();
-    double expectedVelocity = std::sqrt(earthGravParam / semiMajorAxis);
-    checkClose("Velocity magnitude for circular orbit",
-               velocity.norm(), expectedVelocity, 10.0); // 10 m/s tolerance
+        // Check non-zero components with relative tolerance
+        double relErrX = std::abs(computedCartesian(0) - expectedCartesian(0)) / std::abs(expectedCartesian(0));
+        double relErrY = std::abs(computedCartesian(1) - expectedCartesian(1)) / std::abs(expectedCartesian(1));
+        double relErrVx = std::abs(computedCartesian(3) - expectedCartesian(3)) / std::abs(expectedCartesian(3));
+        double relErrVy = std::abs(computedCartesian(4) - expectedCartesian(4)) / std::abs(expectedCartesian(4));
+
+        checkTrue("ODTBX Mars circular X (rel err < 1e-14)", relErrX < 1e-14);
+        checkTrue("ODTBX Mars circular Y (rel err < 1e-14)", relErrY < 1e-14);
+        checkTrue("ODTBX Mars circular Vx (rel err < 1e-14)", relErrVx < 1e-14);
+        checkTrue("ODTBX Mars circular Vy (rel err < 1e-14)", relErrVy < 1e-14);
+        // Z components should be exactly zero
+        checkClose("ODTBX Mars circular Z", computedCartesian(2), 0.0, 1e-10);
+        checkClose("ODTBX Mars circular Vz", computedCartesian(5), 0.0, 1e-10);
+    }
+
+    // =========================================================================
+    // Case 3: Hyperbolic orbit around the Sun - NASA ODTBX benchmark
+    // =========================================================================
+    {
+        const double sunGravParam = 1.32712440018e20;  // m^3/s^2
+
+        Eigen::Vector6d keplerianElements;
+        keplerianElements(semiMajorAxisIndex) = -4.5e11;  // Negative for hyperbolic
+        keplerianElements(eccentricityIndex) = 2.3;
+        keplerianElements(inclinationIndex) = 25.5 / 180.0 * mathematical_constants::PI;
+        keplerianElements(argumentOfPeriapsisIndex) = 156.11 / 180.0 * mathematical_constants::PI;
+        keplerianElements(longitudeOfAscendingNodeIndex) = -215.03 / 180.0 * mathematical_constants::PI;
+        keplerianElements(trueAnomalyIndex) = 123.29 / 180.0 * mathematical_constants::PI;
+
+        Eigen::Vector6d expectedCartesian;
+        expectedCartesian(xCartesianPositionIndex) = -2.776328224174438e12;
+        expectedCartesian(yCartesianPositionIndex) = -6.053823869632723e12;
+        expectedCartesian(zCartesianPositionIndex) = 3.124576293512172e12;
+        expectedCartesian(xCartesianVelocityIndex) = 7.957674684798018e3;
+        expectedCartesian(yCartesianVelocityIndex) = 1.214817382001788e4;
+        expectedCartesian(zCartesianVelocityIndex) = -6.923442392618828e3;
+
+        Eigen::Vector6d computedCartesian = convertKeplerianToCartesianElements(
+            keplerianElements, sunGravParam);
+
+        for (int i = 0; i < 6; i++) {
+            double relError = std::abs(computedCartesian(i) - expectedCartesian(i)) /
+                             std::abs(expectedCartesian(i));
+            checkTrue("ODTBX Sun hyperbolic component " + std::to_string(i) + " (rel err < 1e-14)",
+                     relError < 1e-14);
+        }
+    }
+
+    // =========================================================================
+    // Case 4: Cartesian to Keplerian - Elliptical orbit - NASA ODTBX benchmark
+    // =========================================================================
+    {
+        const double earthGravParam = 3.986004415e14;
+
+        Eigen::Vector6d cartesianElements;
+        cartesianElements(xCartesianPositionIndex) = 3.75e6;
+        cartesianElements(yCartesianPositionIndex) = 4.24e6;
+        cartesianElements(zCartesianPositionIndex) = -1.39e6;
+        cartesianElements(xCartesianVelocityIndex) = -4.65e3;
+        cartesianElements(yCartesianVelocityIndex) = -2.21e3;
+        cartesianElements(zCartesianVelocityIndex) = 1.66e3;
+
+        Eigen::Vector6d expectedKeplerian;
+        expectedKeplerian(semiMajorAxisIndex) = 3.707478199246163e6;
+        expectedKeplerian(eccentricityIndex) = 0.949175203660321;
+        expectedKeplerian(inclinationIndex) = 0.334622356632438;
+        expectedKeplerian(argumentOfPeriapsisIndex) = 2.168430616511167;
+        expectedKeplerian(longitudeOfAscendingNodeIndex) = 1.630852596545341;
+        expectedKeplerian(trueAnomalyIndex) = 3.302032232567084;
+
+        Eigen::Vector6d computedKeplerian = convertCartesianToKeplerianElements(
+            cartesianElements, earthGravParam);
+
+        for (int i = 0; i < 6; i++) {
+            double relError = std::abs(computedKeplerian(i) - expectedKeplerian(i)) /
+                             std::abs(expectedKeplerian(i));
+            checkTrue("ODTBX Cart->Kep elliptical component " + std::to_string(i) + " (rel err < 1e-13)",
+                     relError < 1e-13);
+        }
+    }
+
+    // =========================================================================
+    // Case 5: Cartesian to Keplerian - Hyperbolic orbit around Sun - NASA ODTBX
+    // =========================================================================
+    {
+        const double sunGravParam = 1.32712440018e20;
+
+        Eigen::Vector6d cartesianElements;
+        cartesianElements(xCartesianPositionIndex) = 7.035635643405699e11;
+        cartesianElements(yCartesianPositionIndex) = -2.351218213055550e11;
+        cartesianElements(zCartesianPositionIndex) = 0.037960971564309e11;
+        cartesianElements(xCartesianVelocityIndex) = -1.731375459746510e4;
+        cartesianElements(yCartesianVelocityIndex) = -1.535713656317794e4;
+        cartesianElements(zCartesianVelocityIndex) = 0.423498718768347e4;
+
+        Eigen::Vector6d expectedKeplerian;
+        expectedKeplerian(semiMajorAxisIndex) = -6.78e11;
+        expectedKeplerian(eccentricityIndex) = 1.89;
+        expectedKeplerian(inclinationIndex) = 167.91 / 180.0 * mathematical_constants::PI;
+        expectedKeplerian(argumentOfPeriapsisIndex) = 45.78 / 180.0 * mathematical_constants::PI;
+        expectedKeplerian(longitudeOfAscendingNodeIndex) = 342.89 / 180.0 * mathematical_constants::PI;
+        expectedKeplerian(trueAnomalyIndex) = 315.62 / 180.0 * mathematical_constants::PI;
+
+        Eigen::Vector6d computedKeplerian = convertCartesianToKeplerianElements(
+            cartesianElements, sunGravParam);
+
+        for (int i = 0; i < 6; i++) {
+            double relError = std::abs(computedKeplerian(i) - expectedKeplerian(i)) /
+                             std::abs(expectedKeplerian(i));
+            checkTrue("ODTBX Cart->Kep hyperbolic component " + std::to_string(i) + " (rel err < 1e-14)",
+                     relError < 1e-14);
+        }
+    }
+}
+
+void testAnomalyConversions()
+{
+    std::cout << "\n=== Anomaly Conversions (NASA ODTBX Benchmarks) ===" << std::endl;
+
+    using namespace orbital_element_conversions;
+
+    // =========================================================================
+    // True Anomaly to Eccentric Anomaly - NASA ODTBX benchmarks
+    // =========================================================================
+
+    // Case 1: General elliptical orbit
+    {
+        const double eccentricity = 0.146;
+        const double trueAnomaly = 82.16 / 180.0 * mathematical_constants::PI;
+        const double expectedEccentricAnomaly = 1.290237398010989;
+
+        double computedEccentricAnomaly = convertTrueAnomalyToEllipticalEccentricAnomaly(
+            trueAnomaly, eccentricity);
+
+        double relError = std::abs(computedEccentricAnomaly - expectedEccentricAnomaly) /
+                         std::abs(expectedEccentricAnomaly);
+        checkTrue("ODTBX True->Eccentric elliptical (rel err < 2*eps)",
+                 relError < 2.0 * std::numeric_limits<double>::epsilon());
+    }
+
+    // Case 2: Circular orbit
+    {
+        const double eccentricity = 0.0;
+        const double trueAnomaly = 160.43 / 180.0 * mathematical_constants::PI;
+        const double expectedEccentricAnomaly = 2.800031718974503;
+
+        double computedEccentricAnomaly = convertTrueAnomalyToEllipticalEccentricAnomaly(
+            trueAnomaly, eccentricity);
+
+        double relError = std::abs(computedEccentricAnomaly - expectedEccentricAnomaly) /
+                         std::abs(expectedEccentricAnomaly);
+        checkTrue("ODTBX True->Eccentric circular (rel err < eps)",
+                 relError < std::numeric_limits<double>::epsilon());
+    }
+
+    // Case 3: Hyperbolic orbit (Fortescue reference)
+    {
+        const double eccentricity = 3.0;
+        const double trueAnomaly = 0.5291;
+        const double expectedHyperbolicAnomaly = 0.3879;
+
+        double computedHyperbolicAnomaly = convertTrueAnomalyToHyperbolicEccentricAnomaly(
+            trueAnomaly, eccentricity);
+
+        double relError = std::abs(computedHyperbolicAnomaly - expectedHyperbolicAnomaly) /
+                         std::abs(expectedHyperbolicAnomaly);
+        checkTrue("True->Hyperbolic eccentric (rel err < 1e-4)", relError < 1e-4);
+    }
+
+    // =========================================================================
+    // Eccentric Anomaly to True Anomaly - NASA ODTBX benchmarks
+    // =========================================================================
+
+    // Case 4: General elliptical orbit
+    {
+        const double eccentricity = 0.639;
+        const double eccentricAnomaly = 239.45 / 180.0 * mathematical_constants::PI;
+        const double expectedTrueAnomaly = 3.665218735816221;  // After adding 2*PI
+
+        double computedTrueAnomaly = convertEllipticalEccentricAnomalyToTrueAnomaly(
+            eccentricAnomaly, eccentricity) + 2.0 * mathematical_constants::PI;
+
+        double relError = std::abs(computedTrueAnomaly - expectedTrueAnomaly) /
+                         std::abs(expectedTrueAnomaly);
+        checkTrue("ODTBX Eccentric->True elliptical (rel err < eps)",
+                 relError < std::numeric_limits<double>::epsilon());
+    }
+
+    // Case 5: Hyperbolic orbit (Fortescue reference)
+    {
+        const double eccentricity = 3.0;
+        const double hyperbolicAnomaly = 0.3879;
+        const double expectedTrueAnomaly = 0.5291;
+
+        double computedTrueAnomaly = convertHyperbolicEccentricAnomalyToTrueAnomaly(
+            hyperbolicAnomaly, eccentricity);
+
+        double relError = std::abs(computedTrueAnomaly - expectedTrueAnomaly) /
+                         std::abs(expectedTrueAnomaly);
+        checkTrue("Hyperbolic eccentric->True (rel err < 1e-4)", relError < 1e-4);
+    }
+
+    // =========================================================================
+    // Eccentric Anomaly to Mean Anomaly - NASA ODTBX benchmarks
+    // =========================================================================
+
+    // Case 6: General elliptical orbit
+    {
+        const double eccentricity = 0.541;
+        const double eccentricAnomaly = 176.09 / 180.0 * mathematical_constants::PI;
+        const double expectedMeanAnomaly = 3.036459804491048;
+
+        double computedMeanAnomaly = convertEllipticalEccentricAnomalyToMeanAnomaly(
+            eccentricAnomaly, eccentricity);
+
+        double relError = std::abs(computedMeanAnomaly - expectedMeanAnomaly) /
+                         std::abs(expectedMeanAnomaly);
+        checkTrue("ODTBX Eccentric->Mean elliptical (rel err < eps)",
+                 relError < std::numeric_limits<double>::epsilon());
+    }
+
+    // Case 7: Hyperbolic orbit (Vallado reference)
+    {
+        const double eccentricity = 2.4;
+        const double hyperbolicAnomaly = 1.6013761449;
+        const double expectedMeanAnomaly = 235.4 / 180.0 * mathematical_constants::PI;
+
+        double computedMeanAnomaly = convertHyperbolicEccentricAnomalyToMeanAnomaly(
+            hyperbolicAnomaly, eccentricity);
+
+        double relError = std::abs(computedMeanAnomaly - expectedMeanAnomaly) /
+                         std::abs(expectedMeanAnomaly);
+        checkTrue("Vallado Hyperbolic Eccentric->Mean (rel err < 1e-7)", relError < 1e-7);
+    }
+
+    // =========================================================================
+    // Elapsed Time to Mean Anomaly Change - NASA ODTBX benchmarks
+    // =========================================================================
+
+    // Case 8: Earth-orbiting satellite
+    {
+        const double elapsedTime = 8640.0;  // seconds
+        const double earthGravParam = 398600.4415;  // km^3/s^2
+        const double semiMajorAxis = 42165.3431351313;  // km
+        const double expectedMeanAnomalyChange = 2.580579656848906 - 1.950567148859647;
+
+        double computedMeanAnomalyChange = convertElapsedTimeToEllipticalMeanAnomalyChange(
+            elapsedTime, earthGravParam, semiMajorAxis);
+
+        double relError = std::abs(computedMeanAnomalyChange - expectedMeanAnomalyChange) /
+                         std::abs(expectedMeanAnomalyChange);
+        checkTrue("ODTBX Time->Mean anomaly change (rel err < 1e-13)", relError < 1e-13);
+    }
+
+    // =========================================================================
+    // Mean Anomaly Change to Elapsed Time - NASA ODTBX benchmarks
+    // =========================================================================
+
+    // Case 9: Earth-orbiting satellite
+    {
+        const double meanAnomalyChange = 3.210592164838165 - 1.950567148859647;
+        const double earthGravParam = 398600.4415;  // km^3/s^2
+        const double semiMajorAxis = 42165.3431351313;  // km
+        const double expectedElapsedTime = 17280.0;
+
+        double computedElapsedTime = convertEllipticalMeanAnomalyChangeToElapsedTime(
+            meanAnomalyChange, earthGravParam, semiMajorAxis);
+
+        double relError = std::abs(computedElapsedTime - expectedElapsedTime) /
+                         std::abs(expectedElapsedTime);
+        checkTrue("ODTBX Mean anomaly->Time (rel err < 1e-14)", relError < 1e-14);
+    }
 }
 
 void testCoordinateConversions()
@@ -1274,67 +1564,121 @@ void testSpiceErrorHandling()
 
 void testSpiceTLEPropagation()
 {
-    std::cout << "\n=== SPICE TLE Propagation (SGP4) ===" << std::endl;
+    std::cout << "\n=== TLE/SGP4 Propagation (Vallado Benchmark) ===" << std::endl;
 
     using namespace spice_interface;
     using namespace ephemerides;
 
-    // Test TLE propagation using SPICE's SGP4/SDP4 implementation
-    // This doesn't require kernel files - it's a self-contained propagator
+    // =========================================================================
+    // Vallado TLE Test Case - Reference: Vallado (2013), page 234
+    // This is the canonical test case for SGP4 validation
+    // =========================================================================
+    {
+        // Real TLE from Vallado textbook
+        std::string tleLines = "1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753\n"
+                               "2 00005  34.2682 348.7242 1859667 331.7664  19.3264 10.82419157413667";
 
-    // Create a TLE object directly from orbital elements
-    // Using ISS-like orbital elements
-    double epoch = 0.0;  // J2000 epoch
-    double bStar = 0.0001;  // Drag coefficient
-    double inclination = unit_conversions::convertDegreesToRadians(51.6);  // ISS inclination
-    double rightAscension = unit_conversions::convertDegreesToRadians(0.0);
-    double eccentricity = 0.0001;  // Nearly circular
-    double argOfPerigee = unit_conversions::convertDegreesToRadians(0.0);
-    double meanAnomaly = unit_conversions::convertDegreesToRadians(0.0);
-    // Mean motion in radians per MINUTE (TLE convention)
-    // For ISS at ~400km altitude, orbital period ≈ 92 minutes
-    // Mean motion = 2π / 92 ≈ 0.0683 rad/min
-    double meanMotion = 2.0 * mathematical_constants::PI / 92.0;
+        std::shared_ptr<Tle> tle = std::make_shared<Tle>(tleLines);
 
-    std::shared_ptr<Tle> tle = std::make_shared<Tle>(
-        epoch, bStar, inclination, rightAscension,
-        eccentricity, argOfPerigee, meanAnomaly, meanMotion);
+        // Create TLE ephemeris in TEME frame (raw SGP4 output)
+        TleEphemeris tleEphemeris("Earth", "TEME", tle, false);
 
-    // Verify TLE object was created correctly
-    checkClose("TLE epoch", tle->getEpoch(), epoch, 1e-14);
-    checkClose("TLE inclination", tle->getInclination(), inclination, 1e-14);
-    checkClose("TLE eccentricity", tle->getEccentricity(), eccentricity, 1e-14);
-    checkClose("TLE mean motion", tle->getMeanMotion(), meanMotion, 1e-14);
+        // Propagate for 3 days from TLE epoch
+        // TLE epoch is in seconds since J2000, propagation time is relative to that
+        double propagationDays = 3.0;
+        double propagationSeconds = propagationDays * physical_constants::JULIAN_DAY;
+        double evaluationTime = tle->getEpoch() + propagationSeconds;
 
-    // Create TLE ephemeris
-    TleEphemeris tleEphemeris("Earth", "J2000", tle, false);  // false = use SGP4, not SDP4
+        Eigen::Vector6d propagatedState = tleEphemeris.getCartesianState(evaluationTime);
+        Eigen::Vector3d propagatedPosition = propagatedState.head<3>();
+        Eigen::Vector3d propagatedVelocity = propagatedState.tail<3>();
 
-    // Propagate to a time near the epoch
-    double propagationTime = 60.0;  // 1 minute after epoch
-    Eigen::Vector6d state = tleEphemeris.getCartesianState(propagationTime);
+        // Reference values from Vallado (in TEME frame)
+        // Note: Vallado gives values in km and km/s, we use m and m/s
+        Eigen::Vector3d valladoPosition;
+        Eigen::Vector3d valladoVelocity;
+        valladoPosition << -9059941.3786, 4659697.2000, 813958.8875;
+        valladoVelocity << -2233.348094, -4110.136162, -3157.394074;
 
-    // Verify we got a valid state (non-zero position and velocity)
-    double positionMagnitude = state.head<3>().norm();
-    double velocityMagnitude = state.tail<3>().norm();
+        // Check position (within 50m tolerance - same as main Tudat test)
+        double positionError = (propagatedPosition - valladoPosition).norm();
+        checkTrue("Vallado TLE position error < 50m", positionError < 50.0);
 
-    // ISS orbit radius should be approximately Earth radius + altitude
-    // Earth radius ≈ 6371 km, ISS altitude ≈ 400 km
-    // So radius ≈ 6771 km = 6.771e6 m
-    checkTrue("TLE position magnitude reasonable (> 6e6 m)", positionMagnitude > 6.0e6);
-    checkTrue("TLE position magnitude reasonable (< 8e6 m)", positionMagnitude < 8.0e6);
+        // Check velocity (within 0.05 m/s tolerance - same as main Tudat test)
+        double velocityError = (propagatedVelocity - valladoVelocity).norm();
+        checkTrue("Vallado TLE velocity error < 0.05 m/s", velocityError < 0.05);
 
-    // ISS orbital velocity ≈ 7.66 km/s = 7660 m/s
-    checkTrue("TLE velocity magnitude reasonable (> 7000 m/s)", velocityMagnitude > 7000.0);
-    checkTrue("TLE velocity magnitude reasonable (< 8500 m/s)", velocityMagnitude < 8500.0);
+        // Report actual errors for diagnostic purposes
+        std::cout << "       Vallado position error: " << positionError << " m" << std::endl;
+        std::cout << "       Vallado velocity error: " << velocityError << " m/s" << std::endl;
+    }
 
-    // Propagate for one orbital period and check it returns close to start
-    double orbitalPeriod = 92.0 * 60.0;  // 92 minutes in seconds
-    Eigen::Vector6d stateAfterOrbit = tleEphemeris.getCartesianState(orbitalPeriod);
+    // =========================================================================
+    // Basic TLE Parsing and Property Verification
+    // =========================================================================
+    {
+        // Use the same Vallado TLE for parsing tests
+        std::string tleLines = "1 00005U 58002B   00179.78495062  .00000023  00000-0  28098-4 0  4753\n"
+                               "2 00005  34.2682 348.7242 1859667 331.7664  19.3264 10.82419157413667";
 
-    // Position should return close to initial (within ~100 km due to drag and J2)
-    Eigen::Vector6d initialState = tleEphemeris.getCartesianState(0.0);
-    double positionDiff = (stateAfterOrbit.head<3>() - initialState.head<3>()).norm();
-    checkTrue("TLE returns near initial after one orbit (< 200 km)", positionDiff < 200.0e3);
+        std::shared_ptr<Tle> tle = std::make_shared<Tle>(tleLines);
+
+        // Verify parsed orbital elements
+        // Inclination: 34.2682 degrees
+        double expectedInclination = 34.2682 / 180.0 * mathematical_constants::PI;
+        checkClose("TLE parsed inclination", tle->getInclination(), expectedInclination, 1e-6);
+
+        // Eccentricity: 0.1859667 (stored as 1859667 in TLE, implied decimal point)
+        checkClose("TLE parsed eccentricity", tle->getEccentricity(), 0.1859667, 1e-7);
+
+        // RAAN: 348.7242 degrees
+        double expectedRaan = 348.7242 / 180.0 * mathematical_constants::PI;
+        checkClose("TLE parsed RAAN", tle->getRightAscension(), expectedRaan, 1e-6);
+
+        // Argument of perigee: 331.7664 degrees
+        double expectedArgPerigee = 331.7664 / 180.0 * mathematical_constants::PI;
+        checkClose("TLE parsed arg perigee", tle->getArgOfPerigee(), expectedArgPerigee, 1e-6);
+
+        // Mean anomaly: 19.3264 degrees
+        double expectedMeanAnomaly = 19.3264 / 180.0 * mathematical_constants::PI;
+        checkClose("TLE parsed mean anomaly", tle->getMeanAnomaly(), expectedMeanAnomaly, 1e-6);
+
+        // Mean motion: 10.82419157 rev/day -> convert to rad/min for internal storage
+        // rad/min = rev/day * 2*pi / (24*60)
+        double expectedMeanMotion = 10.82419157 * 2.0 * mathematical_constants::PI / (24.0 * 60.0);
+        checkClose("TLE parsed mean motion", tle->getMeanMotion(), expectedMeanMotion, 1e-10);
+    }
+
+    // =========================================================================
+    // TLE Constructed from Orbital Elements (ISS-like orbit)
+    // =========================================================================
+    {
+        double epoch = 0.0;  // J2000 epoch
+        double bStar = 0.0001;
+        double inclination = unit_conversions::convertDegreesToRadians(51.6);
+        double rightAscension = 0.0;
+        double eccentricity = 0.0001;
+        double argOfPerigee = 0.0;
+        double meanAnomaly = 0.0;
+        double meanMotion = 2.0 * mathematical_constants::PI / 92.0;  // ~92 min period
+
+        std::shared_ptr<Tle> tle = std::make_shared<Tle>(
+            epoch, bStar, inclination, rightAscension,
+            eccentricity, argOfPerigee, meanAnomaly, meanMotion);
+
+        TleEphemeris tleEphemeris("Earth", "TEME", tle, false);
+
+        // Get state at epoch
+        Eigen::Vector6d state = tleEphemeris.getCartesianState(0.0);
+        double positionMagnitude = state.head<3>().norm();
+        double velocityMagnitude = state.tail<3>().norm();
+
+        // ISS-like orbit: ~6778 km radius, ~7.66 km/s velocity
+        checkTrue("ISS-like orbit radius > 6.5e6 m", positionMagnitude > 6.5e6);
+        checkTrue("ISS-like orbit radius < 7.0e6 m", positionMagnitude < 7.0e6);
+        checkTrue("ISS-like orbit velocity > 7.5e3 m/s", velocityMagnitude > 7.5e3);
+        checkTrue("ISS-like orbit velocity < 7.8e3 m/s", velocityMagnitude < 7.8e3);
+    }
 }
 
 void testSpiceTemeFrameRotation()
@@ -1382,6 +1726,7 @@ int main()
         testUnitConversions();
         testPhysicalConstants();
         testOrbitalElementConversions();
+        testAnomalyConversions();
         testCoordinateConversions();
         testEigenOperations();
         testKeplerFunctions();
