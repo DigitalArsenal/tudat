@@ -1321,9 +1321,9 @@ void testTwoBodyPropagation()
         samplesChecked++;
     }
 
-    std::cout << "  Samples checked: " << samplesChecked << std::endl;
-    std::cout << "  Max position error vs Kepler: " << maxPositionError << " m" << std::endl;
-    std::cout << "  Max velocity error vs Kepler: " << maxVelocityError << " m/s" << std::endl;
+    std::cout << "[INFO] Samples checked: " << samplesChecked << std::endl;
+    std::cout << "[INFO] Max position error vs Kepler: " << maxPositionError << " m" << std::endl;
+    std::cout << "[INFO] Max velocity error vs Kepler: " << maxVelocityError << " m/s" << std::endl;
 
     // Native test uses 1E-3 m (1 mm) position tolerance with RK4 at 120s timestep
     // We use 10s timestep over full orbit period, and achieve ~15mm position accuracy
@@ -1580,27 +1580,19 @@ void testSpiceErrorHandling()
     // The stubs allow code to run without crashing.
 
     // Test 1: checkFailure (calls failed_c - works in WASM)
-    std::cout << "Testing checkFailure()..." << std::flush;
     bool hadError = checkFailure();
-    std::cout << " OK (result=" << hadError << ")" << std::endl;
     checkTrue("checkFailure() works", true);
 
     // Test 2: toggleErrorReturn (no-op in WASM)
-    std::cout << "Testing toggleErrorReturn()..." << std::flush;
     toggleErrorReturn();
-    std::cout << " OK" << std::endl;
     checkTrue("toggleErrorReturn() callable", true);
 
     // Test 3: suppressErrorOutput (no-op in WASM)
-    std::cout << "Testing suppressErrorOutput()..." << std::flush;
     suppressErrorOutput();
-    std::cout << " OK" << std::endl;
     checkTrue("suppressErrorOutput() callable", true);
 
     // Test 4: getErrorMessage (returns empty in WASM)
-    std::cout << "Testing getErrorMessage()..." << std::flush;
     std::string errorMsg = getErrorMessage();
-    std::cout << " OK (msg='" << errorMsg << "')" << std::endl;
     checkTrue("getErrorMessage() callable", true);
 
     // Test 5: kernel count
@@ -1655,8 +1647,8 @@ void testSpiceTLEPropagation()
         checkTrue("Vallado TLE velocity error < 0.05 m/s", velocityError < 0.05);
 
         // Report actual errors for diagnostic purposes
-        std::cout << "       Vallado position error: " << positionError << " m" << std::endl;
-        std::cout << "       Vallado velocity error: " << velocityError << " m/s" << std::endl;
+        std::cout << "[INFO] Vallado position error: " << positionError << " m" << std::endl;
+        std::cout << "[INFO] Vallado velocity error: " << velocityError << " m/s" << std::endl;
     }
 
     // =========================================================================
@@ -1765,9 +1757,7 @@ void testSpiceTemeFrameRotation()
 
 int main()
 {
-    std::cout << "========================================" << std::endl;
-    std::cout << "  Tudat WASM Test Suite" << std::endl;
-    std::cout << "========================================" << std::endl;
+    std::cout << "=== Tudat WASM Test Suite ===" << std::endl;
 
     try {
         // Basic astrodynamics and math tests
@@ -1791,9 +1781,7 @@ int main()
         testResourcePaths();
 
         // Propagation tests (full dynamics simulation)
-        std::cout << "\n========================================" << std::endl;
-        std::cout << "  PROPAGATION TESTS" << std::endl;
-        std::cout << "========================================" << std::endl;
+        std::cout << "\n=== PROPAGATION TESTS ===" << std::endl;
 
         testCR3BPPropagation();           // Circular Restricted 3-Body Problem
         testCustomStatePropagation();     // Custom ODE propagation
@@ -1803,9 +1791,7 @@ int main()
         testPropagationTermination();     // Termination conditions
 
         // SPICE tests (functions that work without external kernel files)
-        std::cout << "\n========================================" << std::endl;
-        std::cout << "  SPICE TESTS" << std::endl;
-        std::cout << "========================================" << std::endl;
+        std::cout << "\n=== SPICE TESTS ===" << std::endl;
 
         testSpiceTimeConversions();       // Julian Date <-> Ephemeris Time
         testSpiceFrameRotations();        // J2000 <-> ECLIPJ2000 rotations
@@ -1821,19 +1807,16 @@ int main()
         return 1;
     }
 
-    std::cout << "\n========================================" << std::endl;
-    std::cout << "  Test Results" << std::endl;
-    std::cout << "========================================" << std::endl;
-    std::cout << "Tests run:    " << testsRun << std::endl;
-    std::cout << "Tests passed: " << testsPassed << std::endl;
-    std::cout << "Tests failed: " << testsFailed << std::endl;
-    std::cout << "========================================" << std::endl;
+    std::cout << "\n=== Test Results ===" << std::endl;
+    std::cout << "[INFO] Tests run:    " << testsRun << std::endl;
+    std::cout << "[INFO] Tests passed: " << testsPassed << std::endl;
+    std::cout << "[INFO] Tests failed: " << testsFailed << std::endl;
 
     if (testsFailed > 0) {
-        std::cout << "\n*** SOME TESTS FAILED ***" << std::endl;
+        std::cout << "[FAIL] *** SOME TESTS FAILED ***" << std::endl;
         return 1;
     } else {
-        std::cout << "\n*** ALL TESTS PASSED ***" << std::endl;
+        std::cout << "[PASS] *** ALL TESTS PASSED ***" << std::endl;
         return 0;
     }
 }

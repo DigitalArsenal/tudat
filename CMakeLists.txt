@@ -365,7 +365,13 @@ if(TUDAT_BUILD_WASM)
             URL https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
             URL_HASH SHA256=8586084f71f9bde545ee7fa6d00288b264a2b7ac3607b974e54d13e7162c1c72
         )
-        FetchContent_MakeAvailable(eigen)
+        # Use FetchContent_Populate instead of FetchContent_MakeAvailable
+        # This downloads Eigen without adding it as a subdirectory, avoiding
+        # Eigen's build system which requires Fortran for BLAS/LAPACK tests
+        FetchContent_GetProperties(eigen)
+        if(NOT eigen_POPULATED)
+            FetchContent_Populate(eigen)
+        endif()
         set(EIGEN3_INCLUDE_DIR "${eigen_SOURCE_DIR}")
         # Add Eigen includes immediately after setting the variable
         include_directories(SYSTEM "${EIGEN3_INCLUDE_DIR}")
@@ -412,7 +418,8 @@ endif ()
 #else ()
 #    include(TudatFindBoost)
 #endif ()
-if (UNIX OR (WIN32 AND CLANG))
+if ((UNIX OR (WIN32 AND CLANG)) AND NOT TUDAT_BUILD_WASM)
+    # Skip -isystem for WASM - Emscripten's sysroot already has correct include paths
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -isystem \"${Boost_INCLUDE_DIRS}\"")
 endif ()
 
